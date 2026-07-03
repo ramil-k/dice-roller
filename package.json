@@ -1,8 +1,28 @@
 {
-  "name": "roll-dice",
+  "name": "@ramil-k/roll-dice",
   "version": "0.1.0",
-  "description": "A zero-dependency <roll-dice> web component for tabletop RPG sites, with mathematically-constructed 3D CSS dice.",
+  "description": "A zero-dependency <roll-dice> web component for tabletop RPG sites, with mathematically-constructed 3D SVG dice.",
   "type": "module",
+  "license": "MIT",
+  "author": "ramil-k",
+  "keywords": [
+    "dice",
+    "rpg",
+    "web-component",
+    "custom-element",
+    "3d",
+    "svg",
+    "polyhedral-dice",
+    "tabletop"
+  ],
+  "homepage": "https://ramil-k.github.io/dice-roller/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ramil-k/dice-roller.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ramil-k/dice-roller/issues"
+  },
   "files": ["dist", "src"],
   "main": "./dist/roll-dice.umd.cjs",
   "module": "./dist/roll-dice.js",
@@ -12,13 +32,17 @@
       "require": "./dist/roll-dice.umd.cjs"
     }
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build --mode lib",
     "build:demo": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "prepublishOnly": "npm test && npm run build"
   },
   "devDependencies": {
     "vite": "^6.0.0",
