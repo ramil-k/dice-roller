@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>&lt;roll-dice&gt; demo</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --fg: #1b1e27;
+        --bg: #fbfbfd;
+        --muted: #6b7280;
+        --card: #ffffff;
+        --border: #e3e5ea;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --fg: #e8eaf0;
+          --bg: #111319;
+          --muted: #9aa2b1;
+          --card: #1a1d26;
+          --border: #2a2e3a;
+        }
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        color: var(--fg);
+        background: var(--bg);
+        padding: 2.5rem 1.25rem 5rem;
+      }
+      main { max-width: 720px; margin: 0 auto; }
+      h1 { font-size: 1.9rem; margin: 0 0 0.25rem; }
+      .sub { color: var(--muted); margin: 0 0 2rem; }
+      h2 { font-size: 1.15rem; margin: 2.25rem 0 0.75rem; }
+      p { color: var(--fg); }
+      code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        background: color-mix(in srgb, var(--fg) 8%, transparent);
+        padding: 0.1em 0.35em;
+        border-radius: 0.3em;
+        font-size: 0.9em;
+      }
+      pre {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 0.6rem;
+        padding: 1rem;
+        overflow-x: auto;
+      }
+      pre code { background: none; padding: 0; }
+      .examples {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        margin: 1rem 0;
+      }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 0.7rem;
+        padding: 1rem 1.15rem;
+      }
+      .card .desc { color: var(--muted); font-size: 0.85rem; margin-top: 0.4rem; }
+      #log {
+        margin-top: 0.75rem;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.85rem;
+        color: var(--muted);
+        white-space: pre-wrap;
+        min-height: 1.4em;
+      }
+      roll-dice { color: var(--fg); }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>&lt;roll-dice&gt;</h1>
+      <p class="sub">A drop-in web component for tabletop RPG sites. Click a die to roll.</p>
+
+      <p>
+        In a sentence: attack for
+        <roll-dice>1d20+5</roll-dice> and deal
+        <roll-dice>2d6+3</roll-dice> damage. Roll your stats with
+        <roll-dice>4d6kh3</roll-dice>, or with advantage:
+        <roll-dice>2d20kh1</roll-dice>.
+      </p>
+
+      <h2>Examples</h2>
+      <div class="examples">
+        <div class="card">
+          <roll-dice>d20</roll-dice>
+          <div class="desc">single d20</div>
+        </div>
+        <div class="card">
+          <roll-dice>2d6+3</roll-dice>
+          <div class="desc">damage roll</div>
+        </div>
+        <div class="card">
+          <roll-dice>4d6kh3</roll-dice>
+          <div class="desc">ability score (keep highest 3)</div>
+        </div>
+        <div class="card">
+          <roll-dice>2d20kl1</roll-dice>
+          <div class="desc">disadvantage</div>
+        </div>
+        <div class="card">
+          <roll-dice>1d8+1d6+2</roll-dice>
+          <div class="desc">mixed dice + modifier</div>
+        </div>
+        <div class="card">
+          <roll-dice>8d6</roll-dice>
+          <div class="desc">fireball (many dice)</div>
+        </div>
+        <div class="card">
+          <roll-dice>d12+d4</roll-dice>
+          <div class="desc">mixed polyhedra</div>
+        </div>
+        <div class="card">
+          <roll-dice>2d6 + oops</roll-dice>
+          <div class="desc">invalid formula (error state)</div>
+        </div>
+      </div>
+
+      <h2>Roll events</h2>
+      <p>The component emits a bubbling <code>roll</code> event you can log to a chat, etc.</p>
+      <div id="log">(roll something to see the event)</div>
+
+      <h2>Install</h2>
+      <pre><code>&lt;script src="roll-dice.js"&gt;&lt;/script&gt;
+&lt;roll-dice&gt;2d6+3&lt;/roll-dice&gt;</code></pre>
+
+      <p>
+        Supported syntax: <code>NdM</code>, <code>dM</code>, <code>+K</code>/<code>-K</code>,
+        multiple terms, and keep/drop (<code>kh</code>/<code>kl</code>/<code>dh</code>/<code>dl</code>).
+      </p>
+    </main>
+
+    <script type="module">
+      import './src/roll-dice.js';
+      document.addEventListener('roll', (e) => {
+        const r = e.detail;
+        document.getElementById('log').textContent =
+          `${r.formula}  →  ${r.total}`;
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,27 @@
+{
+  "name": "roll-dice",
+  "version": "0.1.0",
+  "description": "A zero-dependency <roll-dice> web component for tabletop RPG sites, with mathematically-constructed 3D CSS dice.",
+  "type": "module",
+  "files": ["dist", "src"],
+  "main": "./dist/roll-dice.umd.cjs",
+  "module": "./dist/roll-dice.js",
+  "exports": {
+    ".": {
+      "import": "./dist/roll-dice.js",
+      "require": "./dist/roll-dice.umd.cjs"
+    }
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build --mode lib",
+    "build:demo": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "vite": "^6.0.0",
+    "vitest": "^2.1.0"
+  }
+}
