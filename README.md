@@ -1,8 +1,10 @@
 # &lt;roll-dice&gt;
 
-A dependency-free web component for tabletop RPG sites. Wrap a dice formula in
+Dependency-free web components for tabletop RPG sites. Wrap a dice formula in
 `<roll-dice>` and clicking it opens a full-screen overlay with true 3D dice that
-spin, settle on a result, and show the total plus a per-die breakdown.
+spin, settle on a result, and show the total plus a per-die breakdown. A
+companion `<roll-any-dice>` element adds a floating button that opens a builder
+for rolling any pool of dice on the fly.
 
 Built with Vite; the component itself ships as a single self-contained bundle
 with no runtime dependencies.
@@ -37,6 +39,31 @@ attribute wins if both are present):
 ```html
 <roll-dice formula="4d6kh3">roll stats</roll-dice>
 ```
+
+## `<roll-any-dice>` — freeform roller
+
+For a persistent roller not tied to a single formula, drop a `<roll-any-dice>`
+anywhere on the page. It renders a floating button pinned to a corner; clicking
+it opens the same overlay in **builder** mode, where you add and remove any dice
+from a tray, adjust a flat modifier, and roll the pool.
+
+```html
+<roll-any-dice></roll-any-dice>
+```
+
+Attributes:
+
+| Attribute  | Values                                                       | Default        |
+| ---------- | ------------------------------------------------------------ | -------------- |
+| `position` | `bottom-right`, `bottom-left`, `top-right`, `top-left`       | `bottom-right` |
+| `dice`     | space/comma-separated die sizes to offer, e.g. `dice="6 20"` | `4 6 8 10 12 20` |
+
+```html
+<roll-any-dice position="bottom-left" dice="6 20"></roll-any-dice>
+```
+
+It rolls through the same pipeline as `<roll-dice>` and dispatches the same
+`roll` event, so host pages can react to freeform rolls too.
 
 ## Develop
 
@@ -125,16 +152,17 @@ Result shape:
 The component module re-exports the pure roll logic for scripting or testing:
 
 ```js
-import { parseFormula, roll } from '@ramilkos/roll-dice';
-roll(parseFormula('4d6kh3')); // -> result object
+import { parseFormula, roll, poolToParsed } from '@ramilkos/roll-dice';
+roll(parseFormula('4d6kh3'));   // -> result object
+roll(poolToParsed([20, 6, 6], 2)); // build a roll from a pool of die sizes
 ```
 
 ## Files
 
-- `src/dice.js` — pure formula parser + roller (no DOM).
+- `src/dice.js` — pure formula parser + roller and the builder-pool helper (no DOM).
 - `src/geometry.js` — mathematical polyhedron construction and settling.
 - `src/svg.js` — projects the solids to shaded SVG dice.
-- `src/roll-dice.js` — the custom element + overlay (library entry).
+- `src/roll-dice.js` — the `<roll-dice>` / `<roll-any-dice>` elements + overlay (library entry).
 - `index.html` — live demo with several formulas and a roll-event log.
 - `test/` — Vitest suites: dice logic, geometry, and regularity.
 

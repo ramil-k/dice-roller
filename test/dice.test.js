@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseFormula, roll } from '../src/dice.js';
+import { parseFormula, roll, poolToParsed } from '../src/dice.js';
 
 describe('parseFormula', () => {
   it('parses d20 as one 20-sided die', () => {
@@ -103,6 +103,48 @@ describe('roll', () => {
     for (let i = 0; i < 200; i++) {
       const r = roll(parseFormula('1d8+1d6+2'));
       expect(r.total).toBe(r.terms[0].subtotal + r.terms[1].subtotal + 2);
+    }
+  });
+});
+
+describe('poolToParsed (builder pool -> parsed)', () => {
+  it('returns null for an empty pool (no dice = nothing to roll)', () => {
+    expect(poolToParsed([], 0)).toBeNull();
+    expect(poolToParsed([], 3)).toBeNull(); // a bare modifier is not a roll
+  });
+
+  it('groups same-sided dice into one term, in first-seen order', () => {
+    const p = poolToParsed([20, 6, 6], 0);
+    expect(p.terms).toHaveLength(2);
+    expect(p.terms[0]).toMatchObject({ type: 'dice', count: 1, sides: 20 });
+    expect(p.terms[1]).toMatchObject({ type: 'dice', count: 2, sides: 6 });
+    expect(p.toString()).toBe('1d20 + 2d6');
+  });
+
+  it('appends a positive modifier term', () => {
+    const p = poolToParsed([6, 6], 3);
+    expect(p.terms[p.terms.length - 1]).toMatchObject({ type: 'mod', sign: 1, value: 3 });
+    expect(p.toString()).toBe('2d6 + 3');
+  });
+
+  it('appends a negative modifier term', () => {
+    const p = poolToParsed([8], -2);
+    expect(p.terms[1]).toMatchObject({ type: 'mod', sign: -1, value: 2 });
+    expect(p.toString()).toBe('1d8 - 2');
+  });
+
+  it('omits the modifier term when it is zero', () => {
+    const p = poolToParsed([4], 0);
+    expect(p.terms).toHaveLength(1);
+    expect(p.terms.some((t) => t.type === 'mod')).toBe(false);
+  });
+
+  it('feeds roll() correctly: total stays within the pool bounds', () => {
+    for (let i = 0; i < 200; i++) {
+      const r = roll(poolToParsed([20, 6, 6], 2));
+      // min = 1+1+1+2 = 5, max = 20+6+6+2 = 34
+      expect(r.total).toBeGreaterThanOrEqual(5);
+      expect(r.total).toBeLessThanOrEqual(34);
     }
   });
 });

@@ -123,6 +123,13 @@
         </div>
       </div>
 
+      <h2>Freeform roller</h2>
+      <p>
+        The <code>&lt;roll-any-dice&gt;</code> element adds a floating button
+        (bottom-right of this page) that opens a builder where you can add and
+        remove any dice, then roll the pool.
+      </p>
+
       <h2>Roll events</h2>
       <p>The component emits a bubbling <code>roll</code> event you can log to a chat, etc.</p>
       <div id="log">(roll something to see the event)</div>
@@ -143,6 +150,8 @@
         multiple terms, and keep/drop (<code>kh</code>/<code>kl</code>/<code>dh</code>/<code>dl</code>).
       </p>
     </main>
+
+    <roll-any-dice position="bottom-right"></roll-any-dice>
 
     <script type="module">
       import './src/roll-dice.js';

@@ -96,6 +96,39 @@ export function parseFormula(input) {
   };
 }
 
+// Turn a builder pool (an array of die sizes) plus a flat modifier into the
+// same shape parseFormula() produces, so the <roll-any-dice> builder can reuse
+// roll() and the whole render pipeline unchanged. Same-sided dice are grouped
+// into one term, in first-seen order. Returns null if the pool has no dice
+// (matching parseFormula's rule that a roll must contain at least one die).
+export function poolToParsed(pool, mod = 0) {
+  if (!pool.length) return null;
+
+  const counts = new Map(); // sides -> count, insertion-ordered
+  for (const sides of pool) counts.set(sides, (counts.get(sides) ?? 0) + 1);
+
+  const terms = [];
+  for (const [sides, count] of counts) {
+    terms.push({ type: 'dice', sign: 1, count, sides, keep: null });
+  }
+  if (mod !== 0) {
+    terms.push({ type: 'mod', sign: mod < 0 ? -1 : 1, value: Math.abs(mod) });
+  }
+
+  return {
+    terms,
+    toString() {
+      return terms
+        .map((t, i) => {
+          const op = i === 0 ? (t.sign < 0 ? '-' : '') : t.sign < 0 ? '- ' : '+ ';
+          const body = t.type === 'mod' ? String(t.value) : `${t.count}d${t.sides}`;
+          return `${op}${body}`;
+        })
+        .join(' ');
+    },
+  };
+}
+
 // Fair integer in [1, sides] using crypto when available. Rejection-samples
 // to avoid modulo bias.
 export function rollDie(sides) {
