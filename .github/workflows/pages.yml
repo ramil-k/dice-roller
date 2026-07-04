@@ -26,7 +26,11 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
-      - run: npm run build:demo
+      - run: npm run build       # library bundle -> dist/
+      - run: npm run build:demo  # demo site -> dist-demo/
+      # Self-host the library bundle alongside the demo so it can be loaded via
+      # a <script> tag straight from Pages (no npm needed).
+      - run: cp dist/roll-dice.js dist/roll-dice.umd.cjs dist-demo/
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist-demo

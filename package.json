@@ -1,5 +1,5 @@
 {
-  "name": "@ramil-k/roll-dice",
+  "name": "@ramilkos/roll-dice",
   "version": "0.1.0",
   "description": "A zero-dependency <roll-dice> web component for tabletop RPG sites, with mathematically-constructed 3D SVG dice.",
   "type": "module",

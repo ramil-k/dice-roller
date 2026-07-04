@@ -11,20 +11,24 @@ with no runtime dependencies.
 
 ## Install
 
+Drop-in via a `<script>` tag — self-hosted on GitHub Pages, no build step or
+npm needed:
+
+```html
+<script type="module"
+  src="https://ramil-k.github.io/dice-roller/roll-dice.js"></script>
+
+<roll-dice>2d6+3</roll-dice>
 ```
-npm install @ramil-k/roll-dice
+
+Or install from npm:
+
+```
+npm install @ramilkos/roll-dice
 ```
 
 ```js
-import '@ramil-k/roll-dice'; // registers the <roll-dice> element
-```
-
-Or drop in the built bundle with a `<script>` tag:
-
-```html
-<script type="module" src="roll-dice.js"></script>
-
-<roll-dice>2d6+3</roll-dice>
+import '@ramilkos/roll-dice'; // registers the <roll-dice> element
 ```
 
 The formula can be given as text content or via the `formula` attribute (the
@@ -121,7 +125,7 @@ Result shape:
 The component module re-exports the pure roll logic for scripting or testing:
 
 ```js
-import { parseFormula, roll } from '@ramil-k/roll-dice';
+import { parseFormula, roll } from '@ramilkos/roll-dice';
 roll(parseFormula('4d6kh3')); // -> result object
 ```
 
