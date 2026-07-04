@@ -34,45 +34,58 @@ const DEFAULT_TINT = '#7a86a0';
 // Styles (shared by the trigger shadow root and the overlay shadow root)
 // ---------------------------------------------------------------------------
 
+// The trigger is inline *text* — it shares the baseline and line-height of the
+// surrounding copy, so `deal <roll-dice>2d6+3</roll-dice> damage` reads as one
+// sentence. The rounded background highlight is painted on the inline box
+// itself (with box-decoration-break so it survives line wraps); only horizontal
+// padding is added, which an inline box honors without shifting the baseline or
+// the line height. Vertical bleed comes from negative margins on the ::before,
+// not padding, so neighboring lines never get pushed apart.
 const TRIGGER_CSS = `
   :host {
-    display: inline-block;
+    display: inline;
   }
   .chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35em;
-    padding: 0.15em 0.5em;
-    border: 1px solid currentColor;
-    border-radius: 0.4em;
     font: inherit;
-    font-weight: 600;
     color: inherit;
-    background: color-mix(in srgb, currentColor 8%, transparent);
     cursor: pointer;
-    user-select: none;
-    line-height: 1.3;
-    transition: background 0.15s ease, transform 0.05s ease;
+    border-radius: 0.4em;
+    padding-inline: 0.4em;
+    background: color-mix(in srgb, currentColor 10%, transparent);
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
+    transition: background 0.15s ease;
   }
-  .chip:hover { background: color-mix(in srgb, currentColor 16%, transparent); }
-  .chip:active { transform: translateY(1px); }
+  .chip:hover { background: color-mix(in srgb, currentColor 18%, transparent); }
   .chip:focus-visible {
     outline: 2px solid currentColor;
     outline-offset: 2px;
   }
-  .chip svg { width: 1em; height: 1em; flex: none; }
   .chip.error {
     cursor: help;
-    border-style: dashed;
+    background: color-mix(in srgb, currentColor 6%, transparent);
     opacity: 0.8;
+  }
+
+  /* A small die glyph before the formula. Inline and baseline-aligned so it sits
+     within the text run without perturbing line height. */
+  .chip .icon {
+    width: 1em;
+    height: 1em;
+    margin-inline-end: 0.3em;
+    vertical-align: -0.15em;
   }
 `;
 
-// A tiny d20 glyph used in the trigger chip.
-const DIE_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true" fill="none"
-    stroke="currentColor" stroke-width="1.6" stroke-linejoin="round">
-    <path d="M12 2 3 7v10l9 5 9-5V7z"/>
-    <path d="M12 2v6m0 0 8 4m-8-4-8 4m8 4 8-4m-8 4v10m0-10-8-4m8 14-8-4m16 0-8 4"/>
+// A tiny d20 glyph shown before the formula in the inline trigger: a face-on
+// icosahedron. Viewed down a face normal a d20 reads as a regular hexagon whose
+// visible faces form a central up-triangle, an inverted triangle around it, and
+// the outer ring — the classic d20 silhouette.
+const DIE_ICON = `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none"
+    stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M12 2.2 21.5 7.6v8.8L12 21.8 2.5 16.4V7.6z"/>
+    <path d="M6.7 9 12 15.5 17.3 9z"/>
+    <path d="M12 2.2 6.7 9 2.5 7.6M12 2.2 17.3 9l4.2-1.4M6.7 9 2.5 16.4 12 21.8l9.5-5.4L17.3 9M12 15.5V21.8"/>
   </svg>`;
 
 const OVERLAY_CSS = `
