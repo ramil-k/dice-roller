@@ -184,6 +184,27 @@ export function roll(parsed) {
   return { total, formula: parsed.toString(), terms: resultTerms };
 }
 
+// Detect a critical result from a rolled formula, using the standard d20
+// convention: a kept d20 showing a natural 20 is a critical success, a natural
+// 1 is a critical failure. Only kept dice count (a dropped die never crits), and
+// only d20s — the min/max of other dice isn't inherently "critical".
+//
+// With a pool that produces both (a 20 and a 1 across several d20s), success
+// wins: a natural 20 is the more celebrated event. Returns 'success',
+// 'failure', or null.
+export function critFromResult(result) {
+  let sawOne = false;
+  for (const term of result.terms) {
+    if (term.type !== 'dice' || term.sides !== 20) continue;
+    for (const r of term.rolls) {
+      if (!r.kept) continue;
+      if (r.value === 20) return 'success';
+      if (r.value === 1) sawOne = true;
+    }
+  }
+  return sawOne ? 'failure' : null;
+}
+
 // Mark the dropped dice by mutating `kept`. Ties are broken by original order,
 // which doesn't affect the sum.
 function applyKeepDrop(rolls, keep) {

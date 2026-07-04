@@ -102,6 +102,25 @@ Dropped dice appear struck-through in the breakdown (e.g. `[~~2~~, 4, 5, 6] = 15
 - Invalid formulas render as a dashed, non-interactive chip with the reason in
   its tooltip / `aria-label` instead of opening a broken overlay.
 
+## Critical hits
+
+A kept **d20** landing on a natural **20** is a critical success; a natural **1**
+is a fumble. The die that produced it gets a pulsing colored glow, the total is
+tinted to match, and a short `Critical!` / `Fumble!` banner appears. Only kept
+dice count (a dropped d20 from `2d20kl1` never crits) and only d20s; in a mixed
+pool that rolls both a 20 and a 1, success wins. `prefers-reduced-motion` keeps
+the color cues but drops the pulse.
+
+The two tints are overridable from the host page via CSS custom properties —
+set them on `:root` (they inherit into the overlay):
+
+```css
+:root {
+  --rd-crit-success: #ffd54a; /* default gold */
+  --rd-crit-failure: #ff5a5a; /* default red  */
+}
+```
+
 ## Dice
 
 Every die is a **true 3D polyhedron**, constructed mathematically and rendered

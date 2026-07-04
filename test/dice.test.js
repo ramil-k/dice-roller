@@ -1,5 +1,17 @@
 import { describe, it, expect } from 'vitest';
-import { parseFormula, roll, poolToParsed } from '../src/dice.js';
+import { parseFormula, roll, poolToParsed, critFromResult } from '../src/dice.js';
+
+// Build a minimal roll-result shape for critFromResult (which only reads
+// terms[].type/sides/rolls[].value/kept), so crit detection can be tested
+// deterministically without relying on random rolls.
+function diceTerm(sides, values, kept) {
+  return {
+    type: 'dice',
+    sides,
+    rolls: values.map((value, i) => ({ value, sides, kept: kept ? kept[i] : true })),
+  };
+}
+const resultOf = (...terms) => ({ total: 0, formula: '', terms });
 
 describe('parseFormula', () => {
   it('parses d20 as one 20-sided die', () => {
@@ -146,5 +158,41 @@ describe('poolToParsed (builder pool -> parsed)', () => {
       expect(r.total).toBeGreaterThanOrEqual(5);
       expect(r.total).toBeLessThanOrEqual(34);
     }
+  });
+});
+
+describe('critFromResult', () => {
+  it('flags a natural 20 on a d20 as success', () => {
+    expect(critFromResult(resultOf(diceTerm(20, [20])))).toBe('success');
+  });
+
+  it('flags a natural 1 on a d20 as failure', () => {
+    expect(critFromResult(resultOf(diceTerm(20, [1])))).toBe('failure');
+  });
+
+  it('returns null for a middling d20', () => {
+    expect(critFromResult(resultOf(diceTerm(20, [11])))).toBe(null);
+  });
+
+  it('ignores the max/min of non-d20 dice', () => {
+    expect(critFromResult(resultOf(diceTerm(6, [6]), diceTerm(8, [1])))).toBe(null);
+  });
+
+  it('ignores a natural 20 on a dropped d20', () => {
+    // 2d20kl1 (disadvantage): the 20 is dropped, the kept 1 fumbles.
+    expect(critFromResult(resultOf(diceTerm(20, [20, 1], [false, true])))).toBe('failure');
+  });
+
+  it('lets success win when a pool rolls both a 20 and a 1', () => {
+    expect(critFromResult(resultOf(diceTerm(20, [1, 20])))).toBe('success');
+  });
+
+  it('detects a crit across a mixed pool', () => {
+    const r = resultOf(diceTerm(6, [3, 4]), diceTerm(20, [20]));
+    expect(critFromResult(r)).toBe('success');
+  });
+
+  it('returns null when there is no d20 at all', () => {
+    expect(critFromResult(resultOf(diceTerm(6, [6, 6])))).toBe(null);
   });
 });

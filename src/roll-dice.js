@@ -14,7 +14,7 @@
 // The pure roll logic is re-exported (parseFormula, roll, rollDie) for
 // programmatic use and testing.
 
-import { parseFormula, roll, rollDie, poolToParsed } from './dice.js';
+import { parseFormula, roll, rollDie, poolToParsed, critFromResult } from './dice.js';
 import { buildDieSVG } from './svg.js';
 
 export { parseFormula, roll, rollDie };
@@ -136,6 +136,13 @@ const OVERLAY_CSS = `
     --rd-muted: #9aa2b1;
     --rd-die-face: #2a2f3d;
     --rd-die-edge: #4a5263;
+    /* Crit tints are host-overridable: the overlay mounts under document.body,
+       so a page-level --rd-crit-success / --rd-crit-failure inherits in. We read
+       them through internal vars (with the built-in default as the fallback)
+       rather than declaring them on :host — a :host declaration would set the
+       property on the overlay element itself and shadow the inherited override. */
+    --_crit-success: var(--rd-crit-success, #ffd54a);
+    --_crit-failure: var(--rd-crit-failure, #ff5a5a);
     position: fixed;
     inset: 0;
     z-index: 2147483647;
@@ -290,6 +297,24 @@ const OVERLAY_CSS = `
     transform-origin: 50% 55%;
   }
   .die.dropped { opacity: 0.4; }
+
+  /* ---- Critical die glow ----
+     A pulsing colored drop-shadow on the die that produced the crit, starting
+     after it has settled so it reads as a reaction to the landed value. The
+     animation shorthand can't live alongside the tumble on the same element,
+     so crit dice run both animations in one comma-separated list (the tumble
+     transform plus the looping glow). Non-rolling (reduced-motion) crit dice
+     just get a static glow. */
+  .die.crit-success { filter: drop-shadow(0 0 10px var(--_crit-success)); }
+  .die.crit-failure { filter: drop-shadow(0 0 10px var(--_crit-failure)); }
+  .die.rolling.crit-success {
+    animation: tumble 1.05s cubic-bezier(0.25, 0.6, 0.35, 1) forwards,
+               crit-glow-success 1.4s ease-in-out 1.15s infinite;
+  }
+  .die.rolling.crit-failure {
+    animation: tumble 1.05s cubic-bezier(0.25, 0.6, 0.35, 1) forwards,
+               crit-glow-failure 1.4s ease-in-out 1.15s infinite;
+  }
   /* Fallback tile for die types without a constructed solid. */
   .die.flat {
     display: grid;
@@ -318,6 +343,27 @@ const OVERLAY_CSS = `
     line-height: 1;
     color: var(--rd-accent);
   }
+  /* Recolor the total to match the crit and give it a soft matching glow. */
+  .result.crit-success .total {
+    color: var(--_crit-success);
+    text-shadow: 0 0 18px rgb(from var(--_crit-success) r g b / 0.55);
+  }
+  .result.crit-failure .total {
+    color: var(--_crit-failure);
+    text-shadow: 0 0 18px rgb(from var(--_crit-failure) r g b / 0.5);
+  }
+
+  /* The "Critical!" / "Fumble!" banner above the total. */
+  .crit-banner {
+    font-size: 1.15rem;
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    animation: crit-banner-in 0.4s ease both;
+  }
+  .result.crit-success .crit-banner { color: var(--_crit-success); }
+  .result.crit-failure .crit-banner { color: var(--_crit-failure); }
+
   .breakdown {
     font-size: 0.95rem;
     color: var(--rd-muted);
@@ -375,10 +421,39 @@ const OVERLAY_CSS = `
     100% { transform: rotate(0deg) scale(1); }
   }
 
+  /* Pulsing colored halo on the crit die. Animates the filter only so it
+     composes with the tumble's transform track. */
+  @keyframes crit-glow-success {
+    0%, 100% { filter: drop-shadow(0 6px 10px rgb(0 0 0 / 0.35))
+                        drop-shadow(0 0 6px rgb(from var(--_crit-success) r g b / 0.6)); }
+    50%      { filter: drop-shadow(0 6px 10px rgb(0 0 0 / 0.35))
+                        drop-shadow(0 0 18px rgb(from var(--_crit-success) r g b / 0.95)); }
+  }
+  @keyframes crit-glow-failure {
+    0%, 100% { filter: drop-shadow(0 6px 10px rgb(0 0 0 / 0.35))
+                        drop-shadow(0 0 6px rgb(from var(--_crit-failure) r g b / 0.55)); }
+    50%      { filter: drop-shadow(0 6px 10px rgb(0 0 0 / 0.35))
+                        drop-shadow(0 0 16px rgb(from var(--_crit-failure) r g b / 0.9)); }
+  }
+
+  @keyframes crit-banner-in {
+    from { opacity: 0; transform: translateY(-4px) scale(0.9); letter-spacing: 0.02em; }
+    to   { opacity: 1; transform: none; letter-spacing: 0.14em; }
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .backdrop { animation: none; }
     .die.rolling { animation: none; }
     .result { transition: none; }
+    /* Keep the crit color cues (static glow, tinted total, banner) but drop the
+       pulsing/entrance animations. */
+    .die.rolling.crit-success,
+    .die.rolling.crit-failure,
+    .crit-banner { animation: none; }
+    .die.crit-success { filter: drop-shadow(0 6px 10px rgb(0 0 0 / 0.35))
+                               drop-shadow(0 0 12px rgb(from var(--_crit-success) r g b / 0.85)); }
+    .die.crit-failure { filter: drop-shadow(0 6px 10px rgb(0 0 0 / 0.35))
+                               drop-shadow(0 0 12px rgb(from var(--_crit-failure) r g b / 0.8)); }
   }
 `;
 
@@ -396,11 +471,14 @@ function el(tag, cls, text) {
 // Build one die DOM node: an SVG 3D polyhedron (see svg.js) with the rolled
 // value on the forward face. For die types without a constructed solid (unusual
 // `dN`), fall back to a flat labeled tile.
-function buildDie(rollObj) {
+// `crit` (optional) is 'success' | 'failure' when this specific die is the one
+// that produced the roll's critical result, so it gets a highlighted glow.
+function buildDie(rollObj, crit) {
   const { value, sides, kept } = rollObj;
   const die = el('div', `die d${sides}`);
   die.dataset.value = String(value);
   die.classList.toggle('dropped', !kept);
+  if (crit) die.classList.add(`crit-${crit}`);
 
   const tint = DIE_TINT[sides] ?? DEFAULT_TINT;
   // A per-value in-plane spin so a pool of same-type dice doesn't look uniform.
@@ -641,6 +719,8 @@ class DiceOverlay {
     const result = roll(this.parsed);
     if (this.onRoll) this.onRoll(result);
 
+    const crit = critFromResult(result);
+
     panel.setAttribute('aria-label', `Dice roll for ${result.formula}`);
     // Fixed-formula mode shows the formula as a static label; builder mode keeps
     // the live tray in that slot, so only update the label when it exists there.
@@ -656,10 +736,22 @@ class DiceOverlay {
     for (const term of result.terms) {
       if (term.type !== 'dice') continue;
       for (const r of term.rolls) {
-        const die = buildDie(r);
+        // Flag the exact die(s) that produced the crit so they glow: a kept d20
+        // showing 20 (success) or 1 (failure), matching the roll's crit
+        // direction. Both faces can appear in a mixed pool, but only the winning
+        // direction lights up.
+        const dieCrit =
+          crit && r.kept && term.sides === 20 && r.value === (crit === 'success' ? 20 : 1)
+            ? crit
+            : null;
+        const die = buildDie(r, dieCrit);
         if (!reduceMotion) {
           die.classList.add('rolling');
-          die.style.animationDelay = `${Math.min(dieIndex, 12) * 0.05}s`;
+          const stagger = `${Math.min(dieIndex, 12) * 0.05}s`;
+          // A crit die runs two animations (tumble + glow); a single delay would
+          // apply to both, so give the glow its own start (after the tumble) via
+          // a matching two-value list. The glow delay in CSS is 1.15s.
+          die.style.animationDelay = dieCrit ? `${stagger}, 1.15s` : stagger;
         }
         grid.appendChild(die);
         dieIndex++;
@@ -667,8 +759,14 @@ class DiceOverlay {
     }
 
     // Reset then rebuild the result readout (hidden until the dice settle).
-    resultBox.classList.remove('show');
+    resultBox.classList.remove('show', 'crit-success', 'crit-failure');
     resultBox.textContent = '';
+    if (crit) {
+      resultBox.classList.add(`crit-${crit}`);
+      const banner = el('div', 'crit-banner', crit === 'success' ? 'Critical!' : 'Fumble!');
+      banner.setAttribute('role', 'status');
+      resultBox.appendChild(banner);
+    }
     resultBox.append(el('div', 'total', String(result.total)));
     const breakdown = el('div', 'breakdown');
     breakdown.appendChild(renderBreakdown(result));
