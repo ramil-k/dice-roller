@@ -312,12 +312,14 @@ class DiceOverlay {
     this.parsed = parsed;
     this.opener = opener || null;
     this.onRoll = onRoll || null;
+    this._buildShell();
     document.body.appendChild(this.host);
     document.addEventListener('keydown', this._onKeydown, true);
     this.rollAndShow();
   }
 
   close() {
+    clearTimeout(this._revealTimer);
     document.removeEventListener('keydown', this._onKeydown, true);
     if (this.host.parentNode) this.host.parentNode.removeChild(this.host);
     if (this.opener && typeof this.opener.focus === 'function') {
@@ -325,18 +327,15 @@ class DiceOverlay {
     }
   }
 
-  // Clear the shadow root back to just its <style>.
-  _clear() {
+  // Build the persistent overlay shell once per open: backdrop, panel, close
+  // button, formula label, dice grid, result readout, and actions. Rerolling
+  // only refreshes the contents (see rollAndShow) so the backdrop's fade-in
+  // never re-triggers.
+  _buildShell() {
+    // Drop any previous shell (e.g. reopened after close), keep the <style>.
     for (const child of Array.from(this.root.children)) {
       if (child.tagName !== 'STYLE') child.remove();
     }
-  }
-
-  rollAndShow() {
-    this._clear();
-
-    const result = roll(this.parsed);
-    if (this.onRoll) this.onRoll(result);
 
     const backdrop = el('div', 'backdrop');
     backdrop.addEventListener('click', () => this.close());
@@ -344,7 +343,6 @@ class DiceOverlay {
     const panel = el('div', 'panel');
     panel.setAttribute('role', 'dialog');
     panel.setAttribute('aria-modal', 'true');
-    panel.setAttribute('aria-label', `Dice roll for ${result.formula}`);
 
     const closeBtn = el('button', 'close');
     closeBtn.setAttribute('aria-label', 'Close');
@@ -354,9 +352,39 @@ class DiceOverlay {
       '<path d="M6 6l12 12M18 6L6 18"/></svg>';
     closeBtn.addEventListener('click', () => this.close());
 
-    const label = el('div', 'formula-label', result.formula);
-
+    const label = el('div', 'formula-label');
     const grid = el('div', 'dice-grid');
+
+    const resultBox = el('div', 'result');
+    resultBox.setAttribute('aria-live', 'polite');
+
+    const actions = el('div', 'actions');
+    const rerollBtn = el('button', 'primary', 'Reroll');
+    rerollBtn.addEventListener('click', () => this.rollAndShow());
+    const doneBtn = el('button', null, 'Done');
+    doneBtn.addEventListener('click', () => this.close());
+    actions.append(rerollBtn, doneBtn);
+
+    panel.append(closeBtn, label, grid, resultBox, actions);
+    this.root.append(backdrop, panel);
+
+    // Keep references so rerolls can refresh just the contents.
+    this._els = { panel, label, grid, resultBox, rerollBtn };
+  }
+
+  // Roll and refresh only the dynamic contents; the backdrop and panel persist.
+  rollAndShow() {
+    clearTimeout(this._revealTimer);
+    const { panel, label, grid, resultBox, rerollBtn } = this._els;
+
+    const result = roll(this.parsed);
+    if (this.onRoll) this.onRoll(result);
+
+    panel.setAttribute('aria-label', `Dice roll for ${result.formula}`);
+    label.textContent = result.formula;
+
+    // Rebuild the dice grid.
+    grid.textContent = '';
     let dieIndex = 0;
     const reduceMotion =
       typeof matchMedia === 'function' &&
@@ -375,23 +403,13 @@ class DiceOverlay {
       }
     }
 
-    // Result readout (revealed after the dice settle).
-    const resultBox = el('div', 'result');
-    resultBox.setAttribute('aria-live', 'polite');
-    const total = el('div', 'total', String(result.total));
+    // Reset then rebuild the result readout (hidden until the dice settle).
+    resultBox.classList.remove('show');
+    resultBox.textContent = '';
+    resultBox.append(el('div', 'total', String(result.total)));
     const breakdown = el('div', 'breakdown');
     breakdown.appendChild(renderBreakdown(result));
-    resultBox.append(total, breakdown);
-
-    const actions = el('div', 'actions');
-    const rerollBtn = el('button', 'primary', 'Reroll');
-    rerollBtn.addEventListener('click', () => this.rollAndShow());
-    const doneBtn = el('button', null, 'Done');
-    doneBtn.addEventListener('click', () => this.close());
-    actions.append(rerollBtn, doneBtn);
-
-    panel.append(closeBtn, label, grid, resultBox, actions);
-    this.root.append(backdrop, panel);
+    resultBox.appendChild(breakdown);
 
     // Reveal the result after the animation (or immediately if reduced).
     const revealDelay = reduceMotion ? 0 : 1100 + Math.min(dieIndex, 12) * 50;
