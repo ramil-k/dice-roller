@@ -142,6 +142,18 @@
         (bottom-left of this page) shows the same log on the page.
       </p>
 
+      <h2>Battle mat</h2>
+      <p>
+        The <code>&lt;battle-mat&gt;</code> element adds a floating button
+        (top-right of this page) that opens a full-screen grid map: drag
+        player and monster tokens from the pool, draw with pen and shapes,
+        measure with the ruler, attach a map image and align the grid to it.
+        The map autosaves to <code>localStorage</code> as a
+        <a href="https://jsoncanvas.org">JSON Canvas</a> document and can be
+        exported/imported as a <code>.canvas</code> file. The map code loads
+        lazily — nothing is fetched until the first open.
+      </p>
+
       <h2>Roll events</h2>
       <p>The component emits a bubbling <code>roll</code> event you can log to a chat, etc.</p>
       <div id="log">(roll something to see the event)</div>
@@ -165,9 +177,21 @@
 
     <roll-any-dice position="bottom-right"></roll-any-dice>
     <roll-log position="bottom-left"></roll-log>
+    <battle-mat position="top-right"></battle-mat>
 
     <script type="module">
       import './src/roll-dice.js';
+      import './src/battle-mat.js';
+
+      // Page-provided party/monster roster for the battle-mat token pool;
+      // the built-in icon categories appear after these tabs.
+      document.querySelector('battle-mat').roster = [
+        { name: 'Aria', image: 'https://sergeychikin.ru/365/090-human/woman.svg', kind: 'player' },
+        { name: 'Bors', image: 'https://sergeychikin.ru/365/090-human/knight.svg', kind: 'player' },
+        { name: 'Fenwick', image: 'https://sergeychikin.ru/365/090-human/magician.svg', kind: 'player' },
+        { name: 'Dire Wolf', image: 'https://sergeychikin.ru/365/070-animals/wolf.svg', kind: 'monster' },
+        { name: 'Young Dragon', image: 'https://sergeychikin.ru/365/080-other-animals/dragon.svg', kind: 'monster' },
+      ];
       document.addEventListener('roll', (e) => {
         const r = e.detail;
         document.getElementById('log').textContent =

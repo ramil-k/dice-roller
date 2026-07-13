@@ -109,13 +109,129 @@ The panel is themable via the `--rd-log-*` custom properties set on the
 element: `--rd-log-bg`, `--rd-log-fg`, `--rd-log-muted`, `--rd-log-accent`,
 `--rd-log-edge`, `--rd-log-btn-bg`.
 
+## `<battle-mat>` — grid battle map
+
+A floating corner button that opens a full-screen battle map: a pannable,
+zoomable square grid where you drag player and monster tokens from a pool at
+the top, draw with pen and shapes, erase, measure distances with a ruler, and
+attach map images with the grid aligned over them.
+
+```html
+<battle-mat></battle-mat>
+<script>
+  document.querySelector('battle-mat').roster = [
+    { name: 'Aria', image: 'https://example.com/aria.png', kind: 'player' },
+    { name: 'Dire Wolf', image: 'https://example.com/wolf.png', kind: 'monster' },
+  ];
+</script>
+```
+
+**The map code loads lazily.** The `battle-mat` entry is a small trigger
+element; everything else (overlay, tools, icon registry) is fetched via a
+dynamic `import()` the first time the button is clicked. Nothing map-related
+is downloaded before that.
+
+```js
+import '@ramilkos/roll-dice/battle-mat';
+```
+
+The package ships as ES modules only (no UMD — UMD bundles cannot code-split,
+and the map chunk must stay lazy). If you self-host `dist/battle-mat.js`,
+also host the `battle-mat-overlay-*.js` chunk next to it; the dynamic import
+resolves relative to the entry file. Bundlers handle the split automatically.
+
+| Attribute     | Values                                                 | Default             |
+| ------------- | ------------------------------------------------------ | ------------------- |
+| `position`    | `bottom-left`, `bottom-right`, `top-left`, `top-right` | `bottom-right`      |
+| `storage-key` | any string — `localStorage` key for this map           | `battle-mat-canvas` |
+| `roster`      | JSON array (see below); the `roster` property wins     | `[]`                |
+
+Roster entries are `{ name, image, kind }` where `kind` is `"player"` or
+`"monster"`. They fill the **Party** and **Foes** tabs of the token pool;
+after them come the built-in icon categories (Humanoids, Animals, Monsters).
+
+### Tools
+
+- **Select / move** — drag tokens, drawings, and images; drag empty space to pan.
+- **Pan** — drag anywhere to pan. Space+drag or middle-drag pans with any tool;
+  the mouse wheel and two-finger pinch zoom around the cursor.
+- **Pen, Line, Rectangle, Ellipse** — draw in one of the six preset colors.
+- **Eraser** — click or sweep to remove a whole stroke, token, or image.
+- **Ruler** — drag to measure; shows `cells · feet` live (5 ft per cell by
+  default, configurable).
+- **Attach image** — pick a file or drop one onto the map. Images larger than
+  2048px are downscaled before storing (they persist as data URIs).
+- **Grid settings** — cell size, offset X/Y (to align the grid with an attached
+  map image), feet per cell, grid visibility, and snap-to-grid.
+- **Export / Import** — download the map as a `.canvas` file or load one.
+- **Clear** — remove all content, keeping grid and viewport settings.
+
+Tokens snap to grid cells while snap is enabled. A plain click on a pool
+avatar (or Enter/Space on it) arms click-to-place: the next click on the map
+places the token — handy on touch screens; Escape or a second avatar click
+disarms it.
+
+Escape cancels the in-flight action first (drawing, drag, placement), then
+closes an open settings panel, then the overlay itself, returning focus to
+the button that opened it.
+
+### Storage format: JSON Canvas
+
+The map autosaves (debounced) to `localStorage` as a
+[JSON Canvas 1.0](https://jsoncanvas.org) document, and export/import uses the
+same format. Every entity is a spec-valid node of an official type, so
+`.canvas` files open in other JSON Canvas tools; battle-mat semantics live in
+an `x-battleMat` extension property that conforming tools preserve:
+
+| Entity          | Node `type` | Extension (`x-battleMat`)                              |
+| --------------- | ----------- | ------------------------------------------------------ |
+| Token           | `link`      | `{ kind: "token", name, source, tokenKind }`           |
+| Attached image  | `link`      | `{ kind: "image" }` (`url` is a data URI)              |
+| Stroke / shape  | `text`      | `{ kind: "stroke", shape, points, strokeWidth }`       |
+
+Stroke points are stored relative to the node's `x`/`y`, and the node's box is
+the drawing's bounding box, so foreign tools still place it correctly. Grid
+and viewport settings ride in a top-level `x-battleMat` key:
+
+```json
+{ "version": 1,
+  "grid": { "cellSize": 64, "visible": true, "snap": true,
+            "offsetX": 0, "offsetY": 0, "feetPerCell": 5 },
+  "viewport": { "x": 0, "y": 0, "zoom": 1 } }
+```
+
+Nodes from imported files that battle-mat does not understand are kept
+untouched (rendered as labeled boxes) and survive an export round-trip.
+
+If autosave fails (private browsing, or a large map image exceeding the
+`localStorage` quota) the map keeps working in memory and the status bar
+suggests using **Export**.
+
+### Built-in token icons
+
+The Humanoids / Animals / Monsters pool tabs use
+[Chikin Icons](https://sergeychikin.ru/365/) — an icon pack drawn by Sergey
+Chikin (sergeychikin.ru). The icons are hot-linked from his site at runtime,
+not bundled or redistributed with this package. They are free to use, but
+**commercial use requires a license from the author** — see the terms at
+[sergeychikin.ru/365](https://sergeychikin.ru/365/). If the site is
+unreachable, those tabs show empty avatars; roster tokens are unaffected.
+Maps you export reference the icons by URL and never inline them.
+
+### Theming
+
+Set the `--bm-*` custom properties on `battle-mat` (button: `--bm-fab-bg`,
+`--bm-fab-fg`) or globally on `:root` for the overlay palette: `--bm-bg`,
+`--bm-surface`, `--bm-fg`, `--bm-muted`, `--bm-accent`, `--bm-edge`,
+`--bm-grid-line`, `--bm-token-player`, `--bm-token-monster`.
+
 ## Develop
 
 ```
 npm install
 npm run dev      # Vite dev server for the demo (index.html)
-npm test         # Vitest: dice logic + polyhedron geometry
-npm run build    # library build → dist/
+npm test         # Vitest: dice logic, geometry, and battle-mat modules
+npm run build    # library build → dist/ (both entries, one pass)
 ```
 
 ## Formula syntax
@@ -229,8 +345,12 @@ roll(poolToParsed([20, 6, 6], 2)); // build a roll from a pool of die sizes
 - `src/geometry.js` — mathematical polyhedron construction and settling.
 - `src/svg.js` — projects the solids to shaded SVG dice.
 - `src/roll-dice.js` — the `<roll-dice>` / `<roll-any-dice>` / `<roll-log>` elements + overlay (library entry).
+- `src/battle-mat.js` — the `<battle-mat>` trigger element (second library entry, eager half).
+- `src/battle-mat/` — the lazily-loaded map implementation: `overlay.js` (shell),
+  `view.js` (SVG scene), `tools.js` (pointer state machine), and the pure
+  modules `canvas-doc.js`, `grid.js`, `viewport.js`, `registry.js`, `store.js`.
 - `index.html` — live demo with several formulas and a roll-event log.
-- `test/` — Vitest suites: dice logic, geometry, and regularity.
+- `test/` — Vitest suites: dice logic, geometry, regularity, and the pure battle-mat modules.
 
 ## Browser support
 

@@ -24,12 +24,14 @@
     "url": "https://github.com/ramil-k/dice-roller/issues"
   },
   "files": ["dist", "src"],
-  "main": "./dist/roll-dice.umd.cjs",
+  "main": "./dist/roll-dice.js",
   "module": "./dist/roll-dice.js",
   "exports": {
     ".": {
-      "import": "./dist/roll-dice.js",
-      "require": "./dist/roll-dice.umd.cjs"
+      "import": "./dist/roll-dice.js"
+    },
+    "./battle-mat": {
+      "import": "./dist/battle-mat.js"
     }
   },
   "publishConfig": {
