@@ -1,18 +1,16 @@
-// Mathematical 3D geometry for polyhedral dice, rendered with pure CSS
-// `transform: matrix3d(...)` planes. No WebGL, no dependencies.
+// Mathematical 3D geometry for polyhedral dice. No WebGL, no dependencies.
 //
-// For each supported die we build a set of triangular or polygonal faces. Each
-// face is a flat CSS element placed in 3D by a 4x4 matrix that:
-//   1. orients a unit face (lying in the XY plane, centered at origin) so its
-//      outward normal matches the polyhedron face normal, and
-//   2. translates it outward to the face's distance from the solid's center
-//      (the inradius), scaled to the die's pixel size.
+// For each supported die, `buildPolyhedron(sides)` constructs the real solid —
+// vertices normalized to circumradius 1, plus one record per face (vertex
+// indices in outward-CCW order, outward unit normal, centroid).
+// `settleRotation(normal, ...)` returns the row-major 3x3 rotation that turns
+// a chosen face toward the camera (+Z), adds an in-plane spin, and tips the
+// die to its natural 3/4 viewing tilt.
 //
-// We also expose, per face, the outward normal so the renderer can compute a
-// settle rotation that turns a chosen face toward the camera (+Z).
-//
-// Everything here is pure math over Float arrays; it is DOM-free and unit
-// tested. The renderer in roll-dice.js consumes `buildPolyhedron(sides)`.
+// Everything here is pure math over plain arrays; it is DOM-free and unit
+// tested. The SVG renderer (svg.js) consumes `buildPolyhedron`,
+// `settleRotation` and `apply3`: it rotates the vertices, projects them to 2D,
+// culls back faces and paints the rest as shaded polygons.
 
 // ----- tiny vec3 / quaternion helpers -------------------------------------
 

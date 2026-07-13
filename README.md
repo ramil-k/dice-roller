@@ -40,6 +40,19 @@ attribute wins if both are present):
 <roll-dice formula="4d6kh3">roll stats</roll-dice>
 ```
 
+### Compact mode
+
+Add the `compact` attribute to render just the die icon — an inline icon-only
+trigger for tight spots like table rows or list items:
+
+```html
+<roll-dice formula="1d20+2" compact></roll-dice>
+```
+
+The formula stays available to assistive tech via `aria-label` and to sighted
+users via the tooltip. An invalid formula keeps its visible error text even in
+compact mode, so a broken trigger never looks like a working icon.
+
 ## `<roll-any-dice>` — freeform roller
 
 For a persistent roller not tied to a single formula, drop a `<roll-any-dice>`
@@ -56,14 +69,15 @@ Attributes:
 | Attribute  | Values                                                       | Default        |
 | ---------- | ------------------------------------------------------------ | -------------- |
 | `position` | `bottom-right`, `bottom-left`, `top-right`, `top-left`       | `bottom-right` |
-| `dice`     | space/comma-separated die sizes to offer, e.g. `dice="6 20"` | `4 6 8 10 12 20` |
+| `dice`     | space/comma-separated die sizes to offer, e.g. `dice="6 20"` (sizes outside 2–1000 are ignored) | `4 6 8 10 12 20` |
 
 ```html
 <roll-any-dice position="bottom-left" dice="6 20"></roll-any-dice>
 ```
 
 It rolls through the same pipeline as `<roll-dice>` and dispatches the same
-`roll` event, so host pages can react to freeform rolls too.
+`roll` event, so host pages can react to freeform rolls too. The button colors
+are themable via `--rd-fab-bg` / `--rd-fab-fg` set on the element.
 
 ## `<roll-log>` — roll history
 
@@ -86,9 +100,14 @@ newest first — with a **Clear** button.
 | ---------- | ------------------------------------------------------ | ------------- |
 | `position` | `bottom-left`, `bottom-right`, `top-left`, `top-right` | `bottom-left` |
 
-The log updates live on every roll, including rolls made in other tabs of the
-same site. Programmatic access: `readRollLog()` / `clearRollLog()` are exported
-from the module.
+The log updates live on every roll and on every clear, including rolls made in
+other tabs of the same site. It is stored under the `roll-dice-log` key in
+`localStorage`. Programmatic access: `readRollLog()` / `clearRollLog()` are
+exported from the module.
+
+The panel is themable via the `--rd-log-*` custom properties set on the
+element: `--rd-log-bg`, `--rd-log-fg`, `--rd-log-muted`, `--rd-log-accent`,
+`--rd-log-edge`, `--rd-log-btn-bg`.
 
 ## Develop
 
@@ -116,6 +135,9 @@ Standard RPG notation:
 
 Advantage / disadvantage are just `2d20kh1` / `2d20kl1`.
 
+Limits: 1–100 dice per term and 2–1000 sides per die. The freeform builder
+enforces the same caps.
+
 Dropped dice appear struck-through in the breakdown (e.g. `[~~2~~, 4, 5, 6] = 15`).
 
 ## Behavior
@@ -124,7 +146,7 @@ Dropped dice appear struck-through in the breakdown (e.g. `[~~2~~, 4, 5, 6] = 15
 - The overlay animates the dice, then reveals the total and breakdown.
 - **Reroll** re-runs the same formula; **Done**, **Esc**, or a click outside
   closes it. Focus returns to the die that was clicked.
-- Invalid formulas render as a dashed, non-interactive chip with the reason in
+- Invalid formulas render as a dimmed, non-interactive chip with the reason in
   its tooltip / `aria-label` instead of opening a broken overlay.
 
 ## Critical hits
@@ -206,7 +228,7 @@ roll(poolToParsed([20, 6, 6], 2)); // build a roll from a pool of die sizes
 - `src/dice.js` — pure formula parser + roller and the builder-pool helper (no DOM).
 - `src/geometry.js` — mathematical polyhedron construction and settling.
 - `src/svg.js` — projects the solids to shaded SVG dice.
-- `src/roll-dice.js` — the `<roll-dice>` / `<roll-any-dice>` elements + overlay (library entry).
+- `src/roll-dice.js` — the `<roll-dice>` / `<roll-any-dice>` / `<roll-log>` elements + overlay (library entry).
 - `index.html` — live demo with several formulas and a roll-event log.
 - `test/` — Vitest suites: dice logic, geometry, and regularity.
 
