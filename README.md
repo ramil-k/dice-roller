@@ -197,8 +197,13 @@ and viewport settings ride in a top-level `x-battleMat` key:
 { "version": 1,
   "grid": { "cellSize": 64, "visible": true, "snap": true,
             "offsetX": 0, "offsetY": 0, "feetPerCell": 5 },
-  "viewport": { "x": 0, "y": 0, "zoom": 1 } }
+  "viewport": { "x": 0, "y": 0, "zoom": 1 },
+  "combat": { "round": 1, "activeNodeId": null } }
 ```
+
+`combat` and the tokens' `initiative` field belong to the
+[initiative tracker](#initiative-tracker--turn-order) — one exported
+`.canvas` file carries the whole encounter, turn state included.
 
 Nodes from imported files that battle-mat does not understand are kept
 untouched (rendered as labeled boxes) and survive an export round-trip.
@@ -224,6 +229,45 @@ Set the `--bm-*` custom properties on `battle-mat` (button: `--bm-fab-bg`,
 `--bm-fab-fg`) or globally on `:root` for the overlay palette: `--bm-bg`,
 `--bm-surface`, `--bm-fg`, `--bm-muted`, `--bm-accent`, `--bm-edge`,
 `--bm-grid-line`, `--bm-token-player`, `--bm-token-monster`.
+
+## `<initiative-tracker>` — turn order
+
+A corner widget that tracks initiative for the battle mat's encounter. It
+shares the mat's document: every token on the mat is a combatant here, and
+edits sync live in both directions (same tab and across tabs).
+
+```html
+<battle-mat></battle-mat>
+<initiative-tracker></initiative-tracker>
+```
+
+```js
+import '@ramilkos/roll-dice/initiative-tracker';
+```
+
+| Attribute     | Values                                                 | Default             |
+| ------------- | ------------------------------------------------------ | ------------------- |
+| `position`    | `top-left`, `top-right`, `bottom-left`, `bottom-right` | `top-left`          |
+| `storage-key` | must match the paired `<battle-mat>`                   | `battle-mat-canvas` |
+
+The panel lists combatants sorted by initiative (descending; unrolled ones
+last, ties by name), with a number input per row. **Next** advances the turn
+and increments the round on wrap; **Reset** returns to round 1 keeping the
+rolled initiatives. Player and monster rows are color-coded like their token
+rings.
+
+Initiative lives on each token node (`x-battleMat.initiative`) and the round /
+active combatant in the document's `combat` extension (see the format above),
+so exporting the map exports the turn state too, and deleting a token on the
+mat removes it from the order automatically.
+
+Like the battle mat, the widget itself is a small eager element; the panel
+code loads via dynamic `import()` on first expand and shares its chunks
+(document model, store) with the battle-mat overlay, so the two components
+always operate on the same in-memory document.
+
+Theming: `--bm-trk-bg`, `--bm-trk-fg`, `--bm-trk-muted`, `--bm-trk-accent`,
+`--bm-trk-edge`, `--bm-trk-btn-bg` on the element.
 
 ## Develop
 
@@ -346,9 +390,12 @@ roll(poolToParsed([20, 6, 6], 2)); // build a roll from a pool of die sizes
 - `src/svg.js` — projects the solids to shaded SVG dice.
 - `src/roll-dice.js` — the `<roll-dice>` / `<roll-any-dice>` / `<roll-log>` elements + overlay (library entry).
 - `src/battle-mat.js` — the `<battle-mat>` trigger element (second library entry, eager half).
-- `src/battle-mat/` — the lazily-loaded map implementation: `overlay.js` (shell),
-  `view.js` (SVG scene), `tools.js` (pointer state machine), and the pure
-  modules `canvas-doc.js`, `grid.js`, `viewport.js`, `registry.js`, `store.js`.
+- `src/initiative-tracker.js` — the `<initiative-tracker>` widget (third library entry, eager half).
+- `src/battle-mat/` — the lazily-loaded map + tracker implementation:
+  `overlay.js` (mat shell), `view.js` (SVG scene), `tools.js` (pointer state
+  machine), `tracker.js` (initiative panel), and the pure modules
+  `canvas-doc.js`, `grid.js`, `viewport.js`, `combat.js`, `registry.js`,
+  `store.js` (the shared per-key encounter store).
 - `index.html` — live demo with several formulas and a roll-event log.
 - `test/` — Vitest suites: dice logic, geometry, regularity, and the pure battle-mat modules.
 

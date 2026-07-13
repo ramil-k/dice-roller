@@ -22,7 +22,7 @@ import {
   EXT,
 } from './canvas-doc.js';
 import { clampCellSize, snapTokenOrigin } from './grid.js';
-import { loadDoc, createAutosaver, DEFAULT_KEY } from './store.js';
+import { getStore, DEFAULT_KEY } from './store.js';
 import { CATEGORIES, iconUrl } from './registry.js';
 import { buildScene, render, applyViewport, updateGrid } from './view.js';
 import { attachTools } from './tools.js';
@@ -307,12 +307,13 @@ class BattleMatOverlay {
     this.opener = opener ?? null;
     this.roster = roster;
     this.storageKey = storageKey;
-    this.doc = loadDoc(storageKey) ?? emptyDoc();
+    // the encounter document is shared (initiative tracker etc.) — all edits
+    // flow through the per-key store, and re-renders through its events
+    this.store = getStore(storageKey);
+    this._unsubscribe?.();
+    this._unsubscribe = this.store.subscribe((e) => this._onStoreEvent(e));
     this.tool = 'select';
     this.color = '1';
-    this.autosaver = createAutosaver(storageKey, {
-      onResult: (ok) => this._reportSave(ok),
-    });
     this._buildShell();
     this._mount();
     document.addEventListener('keydown', this._onKeydown, true);
@@ -322,7 +323,9 @@ class BattleMatOverlay {
 
   close() {
     this.tools?.detach();
-    this.autosaver?.flush();
+    this._unsubscribe?.();
+    this._unsubscribe = null;
+    this.store?.flush();
     document.removeEventListener('keydown', this._onKeydown, true);
     if (this.host.parentNode) this.host.parentNode.removeChild(this.host);
     if (this.opener && typeof this.opener.focus === 'function') this.opener.focus();
@@ -543,7 +546,7 @@ class BattleMatOverlay {
     panel.hidden = true;
     panel.appendChild(el('h2', null, 'Grid'));
 
-    const grid = () => getExt(this.doc).grid;
+    const grid = () => getExt(this.store.doc).grid;
     const numberRow = (label, key, { min, max, step = 1, clamp } = {}) => {
       const id = `bm-set-${key}`;
       const lab = el('label', null, label);
@@ -599,7 +602,7 @@ class BattleMatOverlay {
   }
 
   _syncSettingsInputs() {
-    const grid = getExt(this.doc).grid;
+    const grid = getExt(this.store.doc).grid;
     const i = this._settingsInputs;
     i.cellSize.value = grid.cellSize;
     i.offsetX.value = grid.offsetX;
@@ -610,7 +613,7 @@ class BattleMatOverlay {
   }
 
   _applyGrid() {
-    updateGrid(this.refs, getExt(this.doc).grid);
+    updateGrid(this.refs, getExt(this.store.doc).grid);
     this._save();
   }
 
@@ -627,11 +630,11 @@ class BattleMatOverlay {
       svg: this.svg,
       root: this.root,
       refs: this.refs,
-      getDoc: () => this.doc,
-      getGrid: () => getExt(this.doc).grid,
-      getViewport: () => getExt(this.doc).viewport,
+      getDoc: () => this.store.doc,
+      getGrid: () => getExt(this.store.doc).grid,
+      getViewport: () => getExt(this.store.doc).viewport,
       setViewport: (vp) => {
-        getExt(this.doc).viewport = vp;
+        getExt(this.store.doc).viewport = vp;
         applyViewport(this.refs, vp);
       },
       commit: () => this._commit(),
@@ -653,13 +656,13 @@ class BattleMatOverlay {
   }
 
   _placeToken(entry, wx, wy) {
-    const grid = getExt(this.doc).grid;
+    const grid = getExt(this.store.doc).grid;
     const size = grid.cellSize;
     let x = wx - size / 2;
     let y = wy - size / 2;
     if (grid.snap) ({ x, y } = snapTokenOrigin(x, y, size, grid));
     addNode(
-      this.doc,
+      this.store.doc,
       makeToken({
         x,
         y,
@@ -676,20 +679,31 @@ class BattleMatOverlay {
   // ---- doc plumbing ----------------------------------------------------------
 
   _syncFromDoc() {
-    const ext = getExt(this.doc);
+    const ext = getExt(this.store.doc);
     updateGrid(this.refs, ext.grid);
     applyViewport(this.refs, ext.viewport);
-    render(this.refs, this.doc);
+    render(this.refs, this.store.doc);
     this._syncSettingsInputs();
   }
 
   _commit() {
-    render(this.refs, this.doc);
-    this._save();
+    this.store.commit(); // rendering happens in _onStoreEvent
   }
 
   _save() {
-    this.autosaver.schedule(this.doc);
+    this.store.save();
+  }
+
+  // React to changes regardless of who made them — this overlay, the
+  // initiative tracker, or another tab (full: the doc object was replaced).
+  _onStoreEvent(e) {
+    if (e.type === 'save-result') {
+      this._reportSave(e.ok);
+    } else if (e.full) {
+      this._syncFromDoc();
+    } else {
+      render(this.refs, this.store.doc);
+    }
   }
 
   _setStatus(text) {
@@ -709,7 +723,7 @@ class BattleMatOverlay {
   // ---- persistence actions ---------------------------------------------------
 
   _export() {
-    const blob = new Blob([serialize(this.doc)], { type: 'application/json' });
+    const blob = new Blob([serialize(this.store.doc)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = el('a');
     a.href = url;
@@ -727,9 +741,7 @@ class BattleMatOverlay {
         this._setStatus(`Import failed: ${res.error}`);
         return;
       }
-      this.doc = res.doc;
-      this._syncFromDoc();
-      this._save();
+      this.store.setDoc(res.doc); // notifies full: re-syncs this overlay too
       this._setStatus('Map imported');
     } catch {
       this._setStatus('Import failed: not a JSON Canvas file');
@@ -738,12 +750,11 @@ class BattleMatOverlay {
 
   _clear() {
     if (!window.confirm('Clear the battle mat? Tokens, drawings and images will be removed.')) return;
-    const ext = getExt(this.doc);
-    this.doc = emptyDoc();
+    const ext = getExt(this.store.doc);
+    const next = emptyDoc();
     // keep the grid/viewport the user has dialed in; only the content clears
-    this.doc[EXT] = ext;
-    this._syncFromDoc();
-    this._save();
+    next[EXT] = ext;
+    this.store.setDoc(next);
   }
 
   _buildFileInputs(rootEl) {
@@ -778,7 +789,7 @@ class BattleMatOverlay {
       if (!file) return;
       e.preventDefault();
       const r = this.svg.getBoundingClientRect();
-      const vp = getExt(this.doc).viewport;
+      const vp = getExt(this.store.doc).viewport;
       const wx = (e.clientX - r.left) / vp.zoom + vp.x;
       const wy = (e.clientY - r.top) / vp.zoom + vp.y;
       this._attachImageFile(file, { x: wx, y: wy });
@@ -808,10 +819,10 @@ class BattleMatOverlay {
         let center = at;
         if (!center) {
           const r = this.svg.getBoundingClientRect();
-          const vp = getExt(this.doc).viewport;
+          const vp = getExt(this.store.doc).viewport;
           center = { x: vp.x + r.width / 2 / vp.zoom, y: vp.y + r.height / 2 / vp.zoom };
         }
-        addNode(this.doc, makeImage({ x: center.x - width / 2, y: center.y - height / 2, width, height, url }));
+        addNode(this.store.doc, makeImage({ x: center.x - width / 2, y: center.y - height / 2, width, height, url }));
         this._commit();
       };
       img.src = reader.result;

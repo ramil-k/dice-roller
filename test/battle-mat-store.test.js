@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { loadDoc, saveDoc, createAutosaver, DEFAULT_KEY } from '../src/battle-mat/store.js';
+import { loadDoc, saveDoc, createAutosaver, getStore, DEFAULT_KEY } from '../src/battle-mat/store.js';
 import { emptyDoc, addNode, makeToken } from '../src/battle-mat/canvas-doc.js';
 
 // Minimal in-memory localStorage stand-in (Node has no localStorage).
@@ -112,5 +112,92 @@ describe('createAutosaver', () => {
     saver.schedule(emptyDoc());
     vi.advanceTimersByTime(10);
     expect(results).toEqual([false]);
+  });
+});
+
+describe('getStore', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  // unique keys per test — the store registry is module-global by design
+  let n = 0;
+  const freshKey = () => `store-test-${++n}`;
+
+  it('returns the same instance for the same key', () => {
+    const key = freshKey();
+    const storage = memoryStorage();
+    const a = getStore(key, { storage });
+    const b = getStore(key, { storage });
+    expect(a).toBe(b);
+    expect(getStore(freshKey(), { storage })).not.toBe(a);
+  });
+
+  it('loads the persisted doc on creation, or starts empty', () => {
+    const storage = memoryStorage();
+    const key = freshKey();
+    const doc = emptyDoc();
+    addNode(doc, makeToken({ x: 0, y: 0, url: 'u' }));
+    saveDoc(key, doc, storage);
+    expect(getStore(key, { storage }).doc.nodes).toHaveLength(1);
+    expect(getStore(freshKey(), { storage }).doc.nodes).toHaveLength(0);
+  });
+
+  it('commit notifies subscribers and persists after the debounce', () => {
+    const storage = memoryStorage();
+    const key = freshKey();
+    const store = getStore(key, { storage, delay: 100 });
+    const events = [];
+    const unsubscribe = store.subscribe((e) => events.push(e));
+    addNode(store.doc, makeToken({ x: 0, y: 0, url: 'u' }));
+    store.commit();
+    expect(events).toEqual([{ type: 'change', full: false }]);
+    vi.advanceTimersByTime(100);
+    expect(loadDoc(key, storage).nodes).toHaveLength(1);
+    expect(events).toEqual([
+      { type: 'change', full: false },
+      { type: 'save-result', ok: true },
+    ]);
+    unsubscribe();
+    store.commit();
+    expect(events).toHaveLength(2);
+  });
+
+  it('setDoc replaces the doc, notifies full, and honors persist: false', () => {
+    const storage = memoryStorage();
+    const key = freshKey();
+    const store = getStore(key, { storage, delay: 100 });
+    const events = [];
+    store.subscribe((e) => events.push(e));
+    const next = emptyDoc();
+    addNode(next, makeToken({ x: 0, y: 0, url: 'u' }));
+    store.setDoc(next, { persist: false });
+    expect(store.doc).toBe(next);
+    expect(events).toEqual([{ type: 'change', full: true }]);
+    vi.advanceTimersByTime(1000);
+    expect(loadDoc(key, storage)).toBeNull(); // nothing was persisted
+    store.setDoc(next);
+    vi.advanceTimersByTime(100);
+    expect(loadDoc(key, storage).nodes).toHaveLength(1);
+  });
+
+  it('save persists without notifying a change', () => {
+    const storage = memoryStorage();
+    const key = freshKey();
+    const store = getStore(key, { storage, delay: 50 });
+    const events = [];
+    store.subscribe((e) => events.push(e));
+    store.save();
+    vi.advanceTimersByTime(50);
+    expect(events).toEqual([{ type: 'save-result', ok: true }]);
+  });
+
+  it('flush writes pending changes immediately', () => {
+    const storage = memoryStorage();
+    const key = freshKey();
+    const store = getStore(key, { storage, delay: 5000 });
+    addNode(store.doc, makeToken({ x: 0, y: 0, url: 'u' }));
+    store.commit();
+    expect(store.flush()).toBe(true);
+    expect(loadDoc(key, storage).nodes).toHaveLength(1);
   });
 });

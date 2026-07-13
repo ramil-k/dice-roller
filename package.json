@@ -32,6 +32,9 @@
     },
     "./battle-mat": {
       "import": "./dist/battle-mat.js"
+    },
+    "./initiative-tracker": {
+      "import": "./dist/initiative-tracker.js"
     }
   },
   "publishConfig": {

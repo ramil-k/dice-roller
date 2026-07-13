@@ -39,11 +39,17 @@ export const DEFAULT_GRID = {
 
 export const DEFAULT_VIEWPORT = { x: 0, y: 0, zoom: 1 };
 
+// Combat state for the initiative tracker. Turn order is *computed* from the
+// tokens' initiative values (see combat.js), so only the round counter and
+// the active combatant are stored.
+export const DEFAULT_COMBAT = { round: 1, activeNodeId: null };
+
 export function defaultExt() {
   return {
     version: 1,
     grid: { ...DEFAULT_GRID },
     viewport: { ...DEFAULT_VIEWPORT },
+    combat: { ...DEFAULT_COMBAT },
   };
 }
 
@@ -51,17 +57,23 @@ export function emptyDoc() {
   return { nodes: [], edges: [], [EXT]: defaultExt() };
 }
 
-// Extension accessor that tolerates docs imported from other tools (missing or
-// partial x-battleMat): always returns a complete grid + viewport, writing the
-// merged object back onto the doc so later mutations stick.
+// Extension accessor that tolerates docs imported from other tools (missing
+// or partial x-battleMat): fills in grid/viewport/combat defaults *in place*,
+// preserving object identity across calls — several components hold on to
+// the same doc, and a reference to ext.combat taken before this call must
+// still be live after it.
+const fillDefaults = (obj, defaults) => {
+  for (const key of Object.keys(defaults)) obj[key] ??= defaults[key];
+  return obj;
+};
+
 export function getExt(doc) {
-  const ext = doc[EXT] ?? {};
-  doc[EXT] = {
-    version: ext.version ?? 1,
-    grid: { ...DEFAULT_GRID, ...(ext.grid ?? {}) },
-    viewport: { ...DEFAULT_VIEWPORT, ...(ext.viewport ?? {}) },
-  };
-  return doc[EXT];
+  const ext = (doc[EXT] ??= {});
+  ext.version ??= 1;
+  fillDefaults((ext.grid ??= {}), DEFAULT_GRID);
+  fillDefaults((ext.viewport ??= {}), DEFAULT_VIEWPORT);
+  fillDefaults((ext.combat ??= {}), DEFAULT_COMBAT);
+  return ext;
 }
 
 export function newId() {

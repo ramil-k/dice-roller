@@ -14,6 +14,7 @@ export default defineConfig(({ mode }) => {
           entry: {
             'roll-dice': 'src/roll-dice.js',
             'battle-mat': 'src/battle-mat.js',
+            'initiative-tracker': 'src/initiative-tracker.js',
           },
           formats: ['es'],
         },

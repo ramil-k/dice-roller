@@ -154,6 +154,16 @@
         lazily — nothing is fetched until the first open.
       </p>
 
+      <h2>Initiative tracker</h2>
+      <p>
+        The <code>&lt;initiative-tracker&gt;</code> element (top-left of this
+        page) shares the battle mat's encounter document: tokens placed on the
+        mat appear as combatants, initiative values sort the turn order, and
+        <strong>Next</strong> advances turns and rounds. Edits sync live in
+        both directions and across tabs. Like the mat, the panel code loads on
+        first open.
+      </p>
+
       <h2>Roll events</h2>
       <p>The component emits a bubbling <code>roll</code> event you can log to a chat, etc.</p>
       <div id="log">(roll something to see the event)</div>
@@ -178,10 +188,12 @@
     <roll-any-dice position="bottom-right"></roll-any-dice>
     <roll-log position="bottom-left"></roll-log>
     <battle-mat position="top-right"></battle-mat>
+    <initiative-tracker position="top-left"></initiative-tracker>
 
     <script type="module">
       import './src/roll-dice.js';
       import './src/battle-mat.js';
+      import './src/initiative-tracker.js';
 
       // Page-provided party/monster roster for the battle-mat token pool;
       // the built-in icon categories appear after these tabs.
