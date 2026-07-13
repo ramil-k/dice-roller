@@ -363,11 +363,26 @@ const OVERLAY_CSS = `
     --_crit-failure: var(--rd-crit-failure, #ff5a5a);
     position: fixed;
     inset: 0;
+    /* Fallback stacking for browsers without the Popover API; when the host is
+       promoted into the top layer (see _mount) this is irrelevant — top-layer
+       order is show order, which puts the overlay above popover-based page UI. */
     z-index: 2147483647;
     display: grid;
     place-items: center;
     color: var(--rd-fg);
     font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    /* Popover-UA resets: [popover] gets fit-content sizing, auto margins,
+       border, padding and an opaque background — undo all of that so the
+       overlay stays a transparent full-viewport sheet. */
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    border: none;
+    max-width: none;
+    max-height: none;
+    overflow: visible;
+    background: transparent;
   }
   .backdrop {
     position: absolute;
@@ -788,7 +803,7 @@ class DiceOverlay {
     this.onRoll = onRoll || null;
     this.builder = false;
     this._buildShell();
-    document.body.appendChild(this.host);
+    this._mount();
     document.addEventListener('keydown', this._onKeydown, true);
     this.rollAndShow();
   }
@@ -805,9 +820,25 @@ class DiceOverlay {
     this._mod = 0;
     this.parsed = null;
     this._buildShell();
-    document.body.appendChild(this.host);
+    this._mount();
     document.addEventListener('keydown', this._onKeydown, true);
     this._renderPool();
+  }
+
+  // Attach the overlay to the page and, where the Popover API exists, promote
+  // it into the top layer. Page UI built on popovers (dialogs, trackers) also
+  // lives there, and within the top layer the most recently shown entry paints
+  // on top — so the overlay ends up above them with no z-index involved.
+  _mount() {
+    document.body.appendChild(this.host);
+    if (this.host.showPopover) {
+      this.host.setAttribute('popover', 'manual');
+      try {
+        this.host.showPopover();
+      } catch {
+        /* already shown */
+      }
+    }
   }
 
   close() {
