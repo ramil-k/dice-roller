@@ -130,6 +130,14 @@
         remove any dice, then roll the pool.
       </p>
 
+      <h2>Roll log</h2>
+      <p>
+        Every roll is saved to <code>localStorage</code> (last 50) and survives
+        page reloads. The roll overlay always shows the history in its
+        bottom-left corner; the <code>&lt;roll-log&gt;</code> element
+        (bottom-left of this page) shows the same log on the page.
+      </p>
+
       <h2>Roll events</h2>
       <p>The component emits a bubbling <code>roll</code> event you can log to a chat, etc.</p>
       <div id="log">(roll something to see the event)</div>
@@ -152,6 +160,7 @@
     </main>
 
     <roll-any-dice position="bottom-right"></roll-any-dice>
+    <roll-log position="bottom-left"></roll-log>
 
     <script type="module">
       import './src/roll-dice.js';

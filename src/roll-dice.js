@@ -4,12 +4,18 @@
 //   <script type="module" src="roll-dice.js"></script>
 //   <roll-dice>2d6+3</roll-dice>
 //   <roll-dice formula="4d6kh3">roll stats</roll-dice>
+//   <roll-dice formula="1d20" compact></roll-dice>  (icon-only trigger)
 //
 // Clicking the element opens a full-screen overlay with animated dice that spin
 // and settle on a result, then shows the total and a per-die breakdown.
 //
 // The component dispatches a bubbling `roll` CustomEvent (detail = the roll
 // result object) each time a roll completes, so host pages can react.
+//
+// Every completed roll is also appended to a localStorage log (last 50). The
+// overlay always shows that log in its bottom-left corner, and the companion
+// <roll-log> element renders it on the page as a collapsible panel pinned to a
+// corner (bottom-left by default).
 //
 // The pure roll logic is re-exported (parseFormula, roll, rollDie) for
 // programmatic use and testing.
@@ -32,6 +38,76 @@ const DEFAULT_TINT = '#7a86a0';
 
 // The standard polyhedral set offered by the <roll-any-dice> builder tray.
 const BUILDER_SIDES = [4, 6, 8, 10, 12, 20];
+
+// ---------------------------------------------------------------------------
+// Roll log (localStorage)
+// ---------------------------------------------------------------------------
+
+// Every roll made through the overlay is appended here, capped at the newest
+// LOG_LIMIT entries. Entries are plain objects: { t, formula, total, crit }.
+// All storage access is try/catch'd — localStorage can be unavailable or full
+// (private browsing, storage-disabled iframes), and the roller must keep
+// working without the log.
+const LOG_KEY = 'roll-dice-log';
+const LOG_LIMIT = 50;
+
+export function readRollLog() {
+  try {
+    const arr = JSON.parse(localStorage.getItem(LOG_KEY) ?? '[]');
+    return Array.isArray(arr) ? arr : [];
+  } catch {
+    return [];
+  }
+}
+
+export function clearRollLog() {
+  try {
+    localStorage.removeItem(LOG_KEY);
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+function appendRollLog(result) {
+  try {
+    const entries = readRollLog();
+    entries.push({
+      t: Date.now(),
+      formula: result.formula,
+      total: result.total,
+      crit: critFromResult(result),
+    });
+    localStorage.setItem(LOG_KEY, JSON.stringify(entries.slice(-LOG_LIMIT)));
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+// Fill `list` with the stored entries, newest first. Shared by the overlay's
+// always-visible log box and the <roll-log> corner widget.
+function renderLogEntries(list) {
+  const entries = readRollLog();
+  list.textContent = '';
+
+  if (!entries.length) {
+    list.appendChild(el('li', 'empty', 'No rolls yet'));
+    return;
+  }
+
+  for (const entry of entries.slice().reverse()) {
+    const li = el('li');
+    const time = new Date(entry.t).toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    li.appendChild(el('span', 'when', time));
+    li.appendChild(el('span', 'f', entry.formula));
+    const tot = el('span', 'tot', String(entry.total));
+    if (entry.crit) tot.classList.add(`crit-${entry.crit}`);
+    li.appendChild(tot);
+    list.appendChild(li);
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Styles (shared by the trigger shadow root and the overlay shadow root)
@@ -78,6 +154,9 @@ const TRIGGER_CSS = `
     margin-inline-end: 0.3em;
     vertical-align: -0.15em;
   }
+
+  /* Compact mode: icon-only trigger — no label, so no gap after the icon. */
+  :host([compact]) .chip .icon { margin-inline-end: 0; }
 `;
 
 // A tiny d20 glyph shown before the formula in the inline trigger: a face-on
@@ -127,6 +206,145 @@ const LAUNCHER_CSS = `
   .fab:focus-visible { outline: 3px solid var(--rd-fab-bg); outline-offset: 3px; }
   .fab .icon { width: 1.9rem; height: 1.9rem; }
 `;
+
+// Shared styles for a roll-log list (header row + entries), used by both the
+// <roll-log> corner widget and the always-on log box inside the overlay. The
+// containing context must define the --rd-log-* custom properties.
+const LOG_PANEL_CSS = `
+  .head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.55rem 0.8rem;
+    border-bottom: 1px solid color-mix(in srgb, var(--rd-log-edge) 55%, transparent);
+    font-weight: 700;
+  }
+  .head .clear {
+    font: inherit;
+    font-weight: 600;
+    font-size: 0.8em;
+    padding: 0.25em 0.7em;
+    border: 1px solid var(--rd-log-edge);
+    border-radius: 0.45em;
+    background: transparent;
+    color: var(--rd-log-muted);
+    cursor: pointer;
+  }
+  .head .clear:hover { color: var(--rd-log-fg); background: color-mix(in srgb, var(--rd-log-fg) 10%, transparent); }
+  .head .clear:focus-visible { outline: 2px solid var(--rd-log-accent); outline-offset: 2px; }
+
+  .entries {
+    margin: 0;
+    padding: 0.35rem 0;
+    list-style: none;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .entries li {
+    display: flex;
+    align-items: baseline;
+    gap: 0.6em;
+    padding: 0.3rem 0.8rem;
+  }
+  .entries li:nth-child(odd) { background: color-mix(in srgb, var(--rd-log-fg) 4%, transparent); }
+  .entries .when {
+    flex: none;
+    font-variant-numeric: tabular-nums;
+    color: var(--rd-log-muted);
+    font-size: 0.9em;
+  }
+  .entries .f {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .entries .tot {
+    flex: none;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    color: var(--rd-log-accent);
+  }
+  /* Same host-overridable crit tints as the overlay. */
+  .entries .tot.crit-success { color: var(--rd-crit-success, #ffd54a); }
+  .entries .tot.crit-failure { color: var(--rd-crit-failure, #ff5a5a); }
+  .entries .empty {
+    justify-content: center;
+    color: var(--rd-log-muted);
+    padding-block: 0.8rem;
+  }
+`;
+
+// Styles for the <roll-log> corner widget: a small round toggle button that
+// expands into a scrollable panel of recent rolls. Pinned bottom-left by
+// default (opposite the <roll-any-dice> launcher's bottom-right).
+const LOG_CSS = `
+  :host {
+    --rd-log-bg: rgb(24 27 36 / 0.96);
+    --rd-log-fg: #f3f4f6;
+    --rd-log-muted: #9aa2b1;
+    --rd-log-accent: #f4c430;
+    --rd-log-edge: #4a5263;
+    --rd-log-btn-bg: #2a2f3d;
+    position: fixed;
+    z-index: 2147483645;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-size: 0.85rem;
+    color: var(--rd-log-fg);
+  }
+  /* Corner pinning; the panel grows from the button toward the page center. */
+  :host,
+  :host([position="bottom-left"])  { bottom: 1.25rem; left: 1.25rem; right: auto; top: auto; align-items: flex-start; flex-direction: column; }
+  :host([position="bottom-right"]) { bottom: 1.25rem; right: 1.25rem; left: auto; top: auto; align-items: flex-end; flex-direction: column; }
+  :host([position="top-left"])     { top: 1.25rem; left: 1.25rem; bottom: auto; right: auto; align-items: flex-start; flex-direction: column-reverse; }
+  :host([position="top-right"])    { top: 1.25rem; right: 1.25rem; bottom: auto; left: auto; align-items: flex-end; flex-direction: column-reverse; }
+
+  .toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    padding: 0;
+    border: 1px solid var(--rd-log-edge);
+    border-radius: 50%;
+    background: var(--rd-log-btn-bg);
+    color: var(--rd-log-fg);
+    cursor: pointer;
+    box-shadow: 0 4px 14px rgb(0 0 0 / 0.3);
+    transition: transform 0.12s ease, background 0.15s ease;
+  }
+  .toggle:hover { transform: translateY(-1px); background: color-mix(in srgb, var(--rd-log-fg) 12%, var(--rd-log-btn-bg)); }
+  .toggle:focus-visible { outline: 2px solid var(--rd-log-accent); outline-offset: 2px; }
+  .toggle .icon { width: 1.35rem; height: 1.35rem; }
+
+  .panel {
+    display: flex;
+    flex-direction: column;
+    width: min(19rem, calc(100vw - 2.5rem));
+    max-height: min(21rem, 60vh);
+    border: 1px solid var(--rd-log-edge);
+    border-radius: 0.7rem;
+    background: var(--rd-log-bg);
+    box-shadow: 0 10px 30px rgb(0 0 0 / 0.4);
+    overflow: hidden;
+  }
+  .panel[hidden] { display: none; }
+${LOG_PANEL_CSS}
+`;
+
+// A "history" glyph (clock with a counterclockwise arrow) for the log toggle.
+const LOG_ICON = `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none"
+    stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M4 12a8 8 0 1 0 2.3-5.6L4 8.5"/>
+    <path d="M4 4v4.5h4.5"/>
+    <path d="M12 8v4.5l3 1.8"/>
+  </svg>`;
 
 const OVERLAY_CSS = `
   :host {
@@ -455,6 +673,34 @@ const OVERLAY_CSS = `
     .die.crit-failure { filter: drop-shadow(0 6px 10px rgb(0 0 0 / 0.35))
                                drop-shadow(0 0 12px rgb(from var(--_crit-failure) r g b / 0.8)); }
   }
+
+  /* ---- Roll log, always visible in the overlay's bottom-left corner ----
+     Maps the overlay palette onto the --rd-log-* vars the shared log-panel
+     rules (LOG_PANEL_CSS) expect. */
+  .log {
+    --rd-log-fg: var(--rd-fg);
+    --rd-log-muted: var(--rd-muted);
+    --rd-log-accent: var(--rd-accent);
+    --rd-log-edge: var(--rd-die-edge);
+    position: absolute;
+    left: 1rem;
+    bottom: 1rem;
+    display: flex;
+    flex-direction: column;
+    width: min(17rem, calc(100vw - 2rem));
+    max-height: min(19rem, 40vh);
+    border: 1px solid var(--rd-log-edge);
+    border-radius: 0.7rem;
+    background: rgb(24 27 36 / 0.85);
+    font-size: 0.85rem;
+    text-align: left;
+    overflow: hidden;
+  }
+  /* Keep the log out of the panel's way on small screens. */
+  @media (max-width: 640px), (max-height: 600px) {
+    .log { max-height: 20vh; font-size: 0.8rem; }
+  }
+${LOG_PANEL_CSS}
 `;
 
 // ---------------------------------------------------------------------------
@@ -621,11 +867,29 @@ class DiceOverlay {
     actions.append(rerollBtn, doneBtn);
 
     panel.append(closeBtn, builder || label, grid, resultBox, actions);
-    this.root.append(backdrop, panel);
+
+    // The roll log is always visible in the overlay's bottom-left corner,
+    // outside the panel so it never shifts the roll layout.
+    const logBox = el('aside', 'log');
+    logBox.setAttribute('aria-label', 'Roll log');
+    const logHead = el('div', 'head');
+    logHead.appendChild(el('span', null, 'Roll log'));
+    const logClear = el('button', 'clear', 'Clear');
+    logClear.type = 'button';
+    const logList = el('ol', 'entries');
+    logClear.addEventListener('click', () => {
+      clearRollLog();
+      renderLogEntries(logList);
+    });
+    logHead.appendChild(logClear);
+    logBox.append(logHead, logList);
+    renderLogEntries(logList);
+
+    this.root.append(backdrop, panel, logBox);
 
     // Keep references so rerolls can refresh just the contents. Merge so the
     // builder tray's refs (pool, modval), set up in _buildTray above, survive.
-    this._els = { ...this._els, panel, label, grid, resultBox, rerollBtn };
+    this._els = { ...this._els, panel, label, grid, resultBox, rerollBtn, logList };
   }
 
   // Build the dice tray for builder mode: the current pool (removable chips),
@@ -714,9 +978,12 @@ class DiceOverlay {
     if (this.builder && !this.parsed) return;
 
     clearTimeout(this._revealTimer);
-    const { panel, label, grid, resultBox, rerollBtn } = this._els;
+    const { panel, label, grid, resultBox, rerollBtn, logList } = this._els;
 
     const result = roll(this.parsed);
+    // Log first, then notify: `roll` event listeners (like <roll-log>) can
+    // re-read storage and already see this roll.
+    appendRollLog(result);
     if (this.onRoll) this.onRoll(result);
 
     const crit = critFromResult(result);
@@ -776,6 +1043,9 @@ class DiceOverlay {
     const revealDelay = reduceMotion ? 0 : 1100 + Math.min(dieIndex, 12) * 50;
     const reveal = () => {
       resultBox.classList.add('show');
+      // Refresh the log only now: updating it earlier would show the new total
+      // in the corner while the dice are still tumbling.
+      renderLogEntries(logList);
       rerollBtn.focus();
     };
     if (revealDelay === 0) reveal();
@@ -820,7 +1090,7 @@ function getOverlay() {
 
 export class RollDice extends HTMLElement {
   static get observedAttributes() {
-    return ['formula'];
+    return ['formula', 'compact'];
   }
 
   connectedCallback() {
@@ -869,8 +1139,11 @@ export class RollDice extends HTMLElement {
       this._error = err.message;
     }
 
+    // Compact mode renders just the die icon; the formula stays available to
+    // assistive tech via aria-label and to sighted users via title.
+    const compact = this.hasAttribute('compact');
     this._chip.innerHTML = DIE_ICON;
-    this._chip.appendChild(document.createTextNode(label || 'invalid'));
+    if (!compact) this._chip.appendChild(document.createTextNode(label || 'invalid'));
 
     if (this._error) {
       this._chip.classList.add('error');
@@ -883,7 +1156,8 @@ export class RollDice extends HTMLElement {
       this.setAttribute('role', 'button');
       this.setAttribute('tabindex', '0');
       this.setAttribute('aria-label', `Roll ${label}`);
-      this.removeAttribute('title');
+      if (compact) this.setAttribute('title', `Roll ${label}`);
+      else this.removeAttribute('title');
     }
   }
 
@@ -955,8 +1229,89 @@ export class RollAnyDice extends HTMLElement {
   }
 }
 
+// ---------------------------------------------------------------------------
+// <roll-log> — a corner widget showing the recent-rolls log from localStorage.
+// A round toggle button expands into a scrollable panel of the last rolls
+// (newest first) with a Clear button. Updates live on every `roll` event and
+// when another tab writes to the log (the `storage` event).
+//
+// Attributes:
+//   position   bottom-left (default) | bottom-right | top-left | top-right
+// ---------------------------------------------------------------------------
+
+export class RollLog extends HTMLElement {
+  connectedCallback() {
+    if (!this.shadowRoot) {
+      this._root = this.attachShadow({ mode: 'open' });
+      const style = document.createElement('style');
+      style.textContent = LOG_CSS;
+      this._root.appendChild(style);
+
+      this._panel = el('div', 'panel');
+      this._panel.hidden = true;
+      this._panel.id = 'panel';
+
+      const head = el('div', 'head');
+      head.appendChild(el('span', null, 'Roll log'));
+      const clearBtn = el('button', 'clear', 'Clear');
+      clearBtn.type = 'button';
+      clearBtn.addEventListener('click', () => {
+        clearRollLog();
+        this._renderEntries();
+      });
+      head.appendChild(clearBtn);
+
+      this._list = el('ol', 'entries');
+      this._panel.append(head, this._list);
+
+      this._toggle = el('button', 'toggle');
+      this._toggle.type = 'button';
+      this._toggle.setAttribute('aria-label', 'Roll log');
+      this._toggle.setAttribute('aria-expanded', 'false');
+      this._toggle.setAttribute('aria-controls', 'panel');
+      this._toggle.innerHTML = LOG_ICON;
+      this._toggle.addEventListener('click', () => this._setOpen(this._panel.hidden));
+
+      // Panel first in the column so it sits between the button and the page
+      // center in every corner (see the per-corner flex-direction rules).
+      this._root.append(this._panel, this._toggle);
+
+      this.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !this._panel.hidden) {
+          this._setOpen(false);
+          this._toggle.focus();
+        }
+      });
+
+      this._refresh = () => this._renderEntries();
+    }
+    if (!this.hasAttribute('position')) this.setAttribute('position', 'bottom-left');
+    // `roll` events bubble (composed) to the document from every component;
+    // `storage` fires when another tab appends to the same log.
+    document.addEventListener('roll', this._refresh);
+    window.addEventListener('storage', this._refresh);
+    this._renderEntries();
+  }
+
+  disconnectedCallback() {
+    document.removeEventListener('roll', this._refresh);
+    window.removeEventListener('storage', this._refresh);
+  }
+
+  _setOpen(open) {
+    this._panel.hidden = !open;
+    this._toggle.setAttribute('aria-expanded', String(open));
+    if (open) this._renderEntries();
+  }
+
+  _renderEntries() {
+    renderLogEntries(this._list);
+  }
+}
+
 // Self-register on import (guarded so double-imports don't throw).
 if (typeof customElements !== 'undefined') {
   if (!customElements.get('roll-dice')) customElements.define('roll-dice', RollDice);
   if (!customElements.get('roll-any-dice')) customElements.define('roll-any-dice', RollAnyDice);
+  if (!customElements.get('roll-log')) customElements.define('roll-log', RollLog);
 }

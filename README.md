@@ -65,6 +65,31 @@ Attributes:
 It rolls through the same pipeline as `<roll-dice>` and dispatches the same
 `roll` event, so host pages can react to freeform rolls too.
 
+## `<roll-log>` — roll history
+
+Every completed roll (from `<roll-dice>` and `<roll-any-dice>` alike) is
+appended to a `localStorage` log capped at the newest 50 entries, so the
+history survives page reloads. The roll overlay always shows the log in its
+bottom-left corner (time, formula, and total, newest first, with a **Clear**
+button); a new roll appears there as its dice settle.
+
+To also show the history on the page itself, drop a `<roll-log>` anywhere: a
+small round button pinned to a corner (bottom-left by default) that expands
+into a scrollable panel — time, formula, and total per roll, crits tinted,
+newest first — with a **Clear** button.
+
+```html
+<roll-log></roll-log>
+```
+
+| Attribute  | Values                                                 | Default       |
+| ---------- | ------------------------------------------------------ | ------------- |
+| `position` | `bottom-left`, `bottom-right`, `top-left`, `top-right` | `bottom-left` |
+
+The log updates live on every roll, including rolls made in other tabs of the
+same site. Programmatic access: `readRollLog()` / `clearRollLog()` are exported
+from the module.
+
 ## Develop
 
 ```
