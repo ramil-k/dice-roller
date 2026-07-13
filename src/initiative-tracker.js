@@ -8,8 +8,13 @@
 // loads via a dynamic import() the first time the widget is expanded, and is
 // shared with the battle-mat chunk by the bundler.
 //
+// A normal in-flow element (the panel opens below the button and pushes
+// content, like a disclosure). Pages that pin the host (position: fixed) can
+// flip the growth direction and panel alignment with
+// --bm-trk-direction (column | column-reverse) and
+// --bm-trk-align (flex-start | flex-end).
+//
 // Attributes:
-//   position     top-left (default) | top-right | bottom-left | bottom-right
 //   storage-key  localStorage key of the encounter, must match the
 //                <battle-mat> it pairs with (default "battle-mat-canvas")
 
@@ -21,20 +26,14 @@ const TRACKER_CSS = `
     --bm-trk-accent: #f4c430;
     --bm-trk-edge: #4a5263;
     --bm-trk-btn-bg: #2a2f3d;
-    position: fixed;
-    z-index: 2147483645;
-    display: flex;
+    display: inline-flex;
+    flex-direction: var(--bm-trk-direction, column);
+    align-items: var(--bm-trk-align, flex-start);
     gap: 0.6rem;
     font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     font-size: 0.85rem;
     color: var(--bm-trk-fg);
   }
-  /* Corner pinning; the panel grows from the button toward the page center. */
-  :host,
-  :host([position="top-left"])     { top: 1.25rem; left: 1.25rem; bottom: auto; right: auto; align-items: flex-start; flex-direction: column-reverse; }
-  :host([position="top-right"])    { top: 1.25rem; right: 1.25rem; bottom: auto; left: auto; align-items: flex-end; flex-direction: column-reverse; }
-  :host([position="bottom-left"])  { bottom: 1.25rem; left: 1.25rem; right: auto; top: auto; align-items: flex-start; flex-direction: column; }
-  :host([position="bottom-right"]) { bottom: 1.25rem; right: 1.25rem; left: auto; top: auto; align-items: flex-end; flex-direction: column; }
 
   .toggle {
     display: inline-flex;
@@ -103,7 +102,9 @@ export class InitiativeTracker extends HTMLElement {
       this._toggle.innerHTML = TRACKER_ICON;
       this._toggle.addEventListener('click', () => this._setOpen(this._panel.hidden));
 
-      this._root.append(this._panel, this._toggle);
+      // Toggle first (reading and tab order); the default column opens the
+      // panel below it, --bm-trk-direction: column-reverse opens it above.
+      this._root.append(this._toggle, this._panel);
 
       this.addEventListener('keydown', (e) => {
         if (e.key === 'Escape' && !this._panel.hidden) {
@@ -112,7 +113,6 @@ export class InitiativeTracker extends HTMLElement {
         }
       });
     }
-    if (!this.hasAttribute('position')) this.setAttribute('position', 'top-left');
   }
 
   disconnectedCallback() {

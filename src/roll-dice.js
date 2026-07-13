@@ -175,21 +175,16 @@ const DIE_ICON = `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill=
     <path d="M12 2.2 6.7 9 2.5 7.6M12 2.2 17.3 9l4.2-1.4M6.7 9 2.5 16.4 12 21.8l9.5-5.4L17.3 9M12 15.5V21.8"/>
   </svg>`;
 
-// Styles for the <roll-any-dice> floating launcher button, pinned to a page
-// corner via the `position` attribute.
+// Styles for the <roll-any-dice> launcher button. The host is a normal
+// in-flow element — place it anywhere; a page that wants the classic floating
+// corner button styles the host itself (e.g.
+// roll-any-dice { position: fixed; bottom: 1.25rem; right: 1.25rem; }).
 const LAUNCHER_CSS = `
   :host {
     --rd-fab-bg: #4a6ed0;
     --rd-fab-fg: #ffffff;
-    position: fixed;
-    z-index: 2147483646;
+    display: inline-block;
   }
-  :host([position="bottom-left"])  { bottom: 1.25rem; left: 1.25rem; right: auto; top: auto; }
-  :host([position="top-right"])    { top: 1.25rem; right: 1.25rem; bottom: auto; left: auto; }
-  :host([position="top-left"])     { top: 1.25rem; left: 1.25rem; bottom: auto; right: auto; }
-  /* Default and explicit bottom-right. */
-  :host,
-  :host([position="bottom-right"]) { bottom: 1.25rem; right: 1.25rem; top: auto; left: auto; }
 
   .fab {
     display: inline-flex;
@@ -282,9 +277,13 @@ const LOG_PANEL_CSS = `
   }
 `;
 
-// Styles for the <roll-log> corner widget: a small round toggle button that
-// expands into a scrollable panel of recent rolls. Pinned bottom-left by
-// default (opposite the <roll-any-dice> launcher's bottom-right).
+// Styles for the <roll-log> widget: a small round toggle button that expands
+// into a scrollable panel of recent rolls. A normal in-flow element (the
+// panel opens below the button and pushes content, like a disclosure). Pages
+// that pin the host (position: fixed etc.) can flip the growth direction and
+// panel alignment via --rd-log-direction (column | column-reverse) and
+// --rd-log-align (flex-start | flex-end) — e.g. a bottom-pinned host wants
+// column-reverse so the panel opens upward.
 const LOG_CSS = `
   :host {
     --rd-log-bg: rgb(24 27 36 / 0.96);
@@ -293,21 +292,14 @@ const LOG_CSS = `
     --rd-log-accent: #f4c430;
     --rd-log-edge: #4a5263;
     --rd-log-btn-bg: #2a2f3d;
-    position: fixed;
-    z-index: 2147483645;
-    display: flex;
-    flex-direction: column;
+    display: inline-flex;
+    flex-direction: var(--rd-log-direction, column);
+    align-items: var(--rd-log-align, flex-start);
     gap: 0.6rem;
     font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     font-size: 0.85rem;
     color: var(--rd-log-fg);
   }
-  /* Corner pinning; the panel grows from the button toward the page center. */
-  :host,
-  :host([position="bottom-left"])  { bottom: 1.25rem; left: 1.25rem; right: auto; top: auto; align-items: flex-start; flex-direction: column; }
-  :host([position="bottom-right"]) { bottom: 1.25rem; right: 1.25rem; left: auto; top: auto; align-items: flex-end; flex-direction: column; }
-  :host([position="top-left"])     { top: 1.25rem; left: 1.25rem; bottom: auto; right: auto; align-items: flex-start; flex-direction: column-reverse; }
-  :host([position="top-right"])    { top: 1.25rem; right: 1.25rem; bottom: auto; left: auto; align-items: flex-end; flex-direction: column-reverse; }
 
   .toggle {
     display: inline-flex;
@@ -1228,12 +1220,13 @@ export class RollDice extends HTMLElement {
 }
 
 // ---------------------------------------------------------------------------
-// <roll-any-dice> — a fixed corner launcher that opens the builder overlay,
-// letting the user assemble and roll any pool of dice. Reuses the same overlay,
-// dice rendering, and roll pipeline as <roll-dice>.
+// <roll-any-dice> — a launcher button that opens the builder overlay, letting
+// the user assemble and roll any pool of dice. Reuses the same overlay, dice
+// rendering, and roll pipeline as <roll-dice>. A normal in-flow element: to
+// float it in a corner, style the host from the page
+// (position: fixed + inset + z-index).
 //
 // Attributes:
-//   position   bottom-right (default) | bottom-left | top-right | top-left
 //   dice       space/comma-separated die sizes to offer, e.g. "6 20"
 //              (defaults to the standard 4 6 8 10 12 20 set; sizes outside
 //              2–MAX_SIDES are ignored, matching the formula parser's limits)
@@ -1256,7 +1249,6 @@ export class RollAnyDice extends HTMLElement {
       this._root.appendChild(fab);
       this._fab = fab;
     }
-    if (!this.hasAttribute('position')) this.setAttribute('position', 'bottom-right');
   }
 
   // Parse the optional `dice` attribute into a list of allowed die sizes.
@@ -1286,14 +1278,13 @@ export class RollAnyDice extends HTMLElement {
 }
 
 // ---------------------------------------------------------------------------
-// <roll-log> — a corner widget showing the recent-rolls log from localStorage.
+// <roll-log> — a widget showing the recent-rolls log from localStorage.
 // A round toggle button expands into a scrollable panel of the last rolls
 // (newest first) with a Clear button. Updates live on every `roll` event, on
 // same-tab clears (the `roll-log-clear` event) and when another tab writes to
-// the log (the `storage` event).
-//
-// Attributes:
-//   position   bottom-left (default) | bottom-right | top-left | top-right
+// the log (the `storage` event). A normal in-flow element: pin it from the
+// page with position: fixed and set --rd-log-direction/--rd-log-align to
+// match the corner (see LOG_CSS).
 // ---------------------------------------------------------------------------
 
 export class RollLog extends HTMLElement {
@@ -1329,9 +1320,9 @@ export class RollLog extends HTMLElement {
       this._toggle.innerHTML = LOG_ICON;
       this._toggle.addEventListener('click', () => this._setOpen(this._panel.hidden));
 
-      // Panel first in the column so it sits between the button and the page
-      // center in every corner (see the per-corner flex-direction rules).
-      this._root.append(this._panel, this._toggle);
+      // Toggle first (reading and tab order); the default column opens the
+      // panel below it, --rd-log-direction: column-reverse opens it above.
+      this._root.append(this._toggle, this._panel);
 
       this.addEventListener('keydown', (e) => {
         if (e.key === 'Escape' && !this._panel.hidden) {
@@ -1342,7 +1333,6 @@ export class RollLog extends HTMLElement {
 
       this._refresh = () => this._renderEntries();
     }
-    if (!this.hasAttribute('position')) this.setAttribute('position', 'bottom-left');
     // `roll` events bubble (composed) to the document from every component;
     // `roll-log-clear` fires when any Clear button in this tab wipes the log;
     // `storage` fires when another tab appends to the same log.

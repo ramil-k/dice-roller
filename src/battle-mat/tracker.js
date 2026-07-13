@@ -128,6 +128,12 @@ export function buildTracker(container, { storageKey = DEFAULT_KEY } = {}) {
     const combat = getExt(doc).combat;
     round.textContent = `Round ${combat.round}`;
 
+    // Rebuilding the list destroys the focused input, throwing focus out of
+    // the panel mid data entry (type an initiative, Tab to the next field —
+    // the commit re-sorts and rebuilds). Remember which combatant's input
+    // had focus and restore it onto the rebuilt row.
+    const focusedId = root.activeElement?.dataset?.nodeId ?? null;
+
     const order = turnOrder(doc);
     empty.hidden = order.length > 0;
     list.replaceChildren();
@@ -141,17 +147,28 @@ export function buildTracker(container, { storageKey = DEFAULT_KEY } = {}) {
       const name = el('span', 'name', node[EXT].name || 'Token');
       const init = el('input', 'init');
       init.type = 'number';
+      init.dataset.nodeId = node.id;
       init.setAttribute('aria-label', `Initiative for ${node[EXT].name || 'token'}`);
       init.value = getInitiative(node) ?? '';
       init.addEventListener('change', () => {
         setInitiative(store.doc, node.id, init.value);
         store.commit();
-        // the subscriber skips renders while an init input is focused (Enter
-        // keeps focus), so re-sort explicitly after committing our own edit
-        render();
+        // The subscriber skips renders while an init input is focused (this
+        // one still has focus while `change` fires), so re-sort explicitly —
+        // but only after the browser finishes moving focus: a synchronous
+        // rebuild here would destroy the input a Tab press is about to land
+        // on, throwing focus out of the panel. Deferred, render() sees the
+        // real destination and restores focus onto the rebuilt row.
+        setTimeout(render, 0);
       });
       row.append(dot, name, init);
       list.appendChild(row);
+    }
+    if (focusedId !== null) {
+      const input = list.querySelector(`.init[data-node-id="${CSS.escape(focusedId)}"]`);
+      // select(), matching what tabbing into an input does natively
+      input?.focus();
+      input?.select();
     }
   }
 

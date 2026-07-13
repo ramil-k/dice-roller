@@ -1,4 +1,6 @@
-// <battle-mat> — corner launcher for the battle-map overlay.
+// <battle-mat> — launcher button for the battle-map overlay. A normal
+// in-flow element: to float it in a page corner, style the host from the
+// page (position: fixed + inset + z-index).
 //
 // This module is the *eager* half of the component and deliberately imports
 // nothing from the rest of the package: everything map-related (overlay,
@@ -6,7 +8,6 @@
 // so pages pay nothing for the battle mat until someone actually opens it.
 //
 // Attributes:
-//   position     bottom-right (default) | bottom-left | top-right | top-left
 //   storage-key  localStorage key for this mat's autosaved canvas
 //                (default "battle-mat-canvas"; use distinct keys for
 //                distinct maps)
@@ -23,15 +24,8 @@ const FAB_CSS = `
   :host {
     --bm-fab-bg: #3f8f6b;
     --bm-fab-fg: #ffffff;
-    position: fixed;
-    z-index: 2147483646;
+    display: inline-block;
   }
-  :host([position="bottom-left"])  { bottom: 1.25rem; left: 1.25rem; right: auto; top: auto; }
-  :host([position="top-right"])    { top: 1.25rem; right: 1.25rem; bottom: auto; left: auto; }
-  :host([position="top-left"])     { top: 1.25rem; left: 1.25rem; bottom: auto; right: auto; }
-  /* Default and explicit bottom-right. */
-  :host,
-  :host([position="bottom-right"]) { bottom: 1.25rem; right: 1.25rem; top: auto; left: auto; }
 
   .fab {
     display: inline-flex;
@@ -82,7 +76,6 @@ export class BattleMat extends HTMLElement {
       this._root.appendChild(fab);
       this._fab = fab;
     }
-    if (!this.hasAttribute('position')) this.setAttribute('position', 'bottom-right');
   }
 
   // Pool roster: the property wins over the attribute; the attribute is JSON.

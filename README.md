@@ -56,8 +56,9 @@ compact mode, so a broken trigger never looks like a working icon.
 ## `<roll-any-dice>` — freeform roller
 
 For a persistent roller not tied to a single formula, drop a `<roll-any-dice>`
-anywhere on the page. It renders a floating button pinned to a corner; clicking
-it opens the same overlay in **builder** mode, where you add and remove any dice
+anywhere on the page — it is a normal in-flow button (see
+[Positioning](#positioning-the-widgets) to float it in a corner). Clicking it
+opens the same overlay in **builder** mode, where you add and remove any dice
 from a tray, adjust a flat modifier, and roll the pool.
 
 ```html
@@ -68,12 +69,7 @@ Attributes:
 
 | Attribute  | Values                                                       | Default        |
 | ---------- | ------------------------------------------------------------ | -------------- |
-| `position` | `bottom-right`, `bottom-left`, `top-right`, `top-left`       | `bottom-right` |
 | `dice`     | space/comma-separated die sizes to offer, e.g. `dice="6 20"` (sizes outside 2–1000 are ignored) | `4 6 8 10 12 20` |
-
-```html
-<roll-any-dice position="bottom-left" dice="6 20"></roll-any-dice>
-```
 
 It rolls through the same pipeline as `<roll-dice>` and dispatches the same
 `roll` event, so host pages can react to freeform rolls too. The button colors
@@ -88,17 +84,15 @@ bottom-left corner (time, formula, and total, newest first, with a **Clear**
 button); a new roll appears there as its dice settle.
 
 To also show the history on the page itself, drop a `<roll-log>` anywhere: a
-small round button pinned to a corner (bottom-left by default) that expands
-into a scrollable panel — time, formula, and total per roll, crits tinted,
-newest first — with a **Clear** button.
+small round button that expands into a scrollable panel — time, formula, and
+total per roll, crits tinted, newest first — with a **Clear** button. The
+panel opens below the button by default; see
+[Positioning](#positioning-the-widgets) for pinning and flipping the
+direction.
 
 ```html
 <roll-log></roll-log>
 ```
-
-| Attribute  | Values                                                 | Default       |
-| ---------- | ------------------------------------------------------ | ------------- |
-| `position` | `bottom-left`, `bottom-right`, `top-left`, `top-right` | `bottom-left` |
 
 The log updates live on every roll and on every clear, including rolls made in
 other tabs of the same site. It is stored under the `roll-dice-log` key in
@@ -142,9 +136,11 @@ resolves relative to the entry file. Bundlers handle the split automatically.
 
 | Attribute     | Values                                                 | Default             |
 | ------------- | ------------------------------------------------------ | ------------------- |
-| `position`    | `bottom-left`, `bottom-right`, `top-left`, `top-right` | `bottom-right`      |
 | `storage-key` | any string — `localStorage` key for this map           | `battle-mat-canvas` |
 | `roster`      | JSON array (see below); the `roster` property wins     | `[]`                |
+
+The button is a normal in-flow element — see
+[Positioning](#positioning-the-widgets) to float it in a corner.
 
 Roster entries are `{ name, image, kind }` where `kind` is `"player"` or
 `"monster"`. They fill the **Party** and **Foes** tabs of the token pool;
@@ -247,8 +243,10 @@ import '@ramilkos/roll-dice/initiative-tracker';
 
 | Attribute     | Values                                                 | Default             |
 | ------------- | ------------------------------------------------------ | ------------------- |
-| `position`    | `top-left`, `top-right`, `bottom-left`, `bottom-right` | `top-left`          |
 | `storage-key` | must match the paired `<battle-mat>`                   | `battle-mat-canvas` |
+
+The widget is a normal in-flow element; its panel opens below the toggle
+button by default — see [Positioning](#positioning-the-widgets).
 
 The panel lists combatants sorted by initiative (descending; unrolled ones
 last, ties by name), with a number input per row. **Next** advances the turn
@@ -268,6 +266,49 @@ always operate on the same in-memory document.
 
 Theming: `--bm-trk-bg`, `--bm-trk-fg`, `--bm-trk-muted`, `--bm-trk-accent`,
 `--bm-trk-edge`, `--bm-trk-btn-bg` on the element.
+
+## Positioning the widgets
+
+`<roll-any-dice>`, `<roll-log>`, `<battle-mat>` and `<initiative-tracker>` are
+plain in-flow elements (`display: inline-block` / `inline-flex`): put them in
+a sidebar, a card, a toolbar — anywhere. None of them positions itself.
+
+To get the classic floating corner button, pin the host from the page:
+
+```css
+roll-any-dice {
+  position: fixed;
+  right: 1.25rem;
+  bottom: 1.25rem;
+  z-index: 1000; /* whatever fits the page's stacking */
+}
+```
+
+The two panel widgets open their panel *below* the toggle button by default.
+When pinned to a bottom corner (or otherwise needing to grow the other way),
+flip the direction and alignment with custom properties on the host —
+`--rd-log-direction` / `--rd-log-align` for `<roll-log>`,
+`--bm-trk-direction` / `--bm-trk-align` for `<initiative-tracker>`:
+
+```css
+roll-log {
+  position: fixed;
+  left: 1.25rem;
+  bottom: 1.25rem;
+  z-index: 1000;
+  --rd-log-direction: column-reverse; /* panel opens upward */
+}
+initiative-tracker[data-pinned] {
+  position: fixed;
+  right: 1.25rem;
+  top: 1.25rem;
+  z-index: 1000;
+  --bm-trk-align: flex-end; /* right-align the panel under the button */
+}
+```
+
+The full-screen overlays (dice roller, battle mat) are unaffected — they
+always mount into the top layer regardless of where their button sits.
 
 ## Develop
 
