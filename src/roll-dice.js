@@ -17,13 +17,13 @@
 // <roll-log> element renders it on the page as a collapsible panel pinned to a
 // corner (bottom-left by default).
 //
-// The pure roll logic is re-exported (parseFormula, roll, rollDie) for
-// programmatic use and testing.
+// The pure roll logic is re-exported (parseFormula, roll, rollDie,
+// poolToParsed) for programmatic use and testing.
 
-import { parseFormula, roll, rollDie, poolToParsed, critFromResult } from './dice.js';
+import { parseFormula, roll, rollDie, poolToParsed, critFromResult, MAX_COUNT, MAX_SIDES } from './dice.js';
 import { buildDieSVG } from './svg.js';
 
-export { parseFormula, roll, rollDie };
+export { parseFormula, roll, rollDie, poolToParsed };
 
 // Per-die-type base tint (hex), used to shade the SVG faces.
 const DIE_TINT = {
@@ -65,6 +65,11 @@ export function clearRollLog() {
     localStorage.removeItem(LOG_KEY);
   } catch {
     /* storage unavailable */
+  }
+  // Same-tab listeners (<roll-log>) can't rely on `storage` — it only fires in
+  // other tabs — so announce the clear explicitly.
+  if (typeof document !== 'undefined') {
+    document.dispatchEvent(new Event('roll-log-clear'));
   }
 }
 
@@ -473,8 +478,9 @@ const OVERLAY_CSS = `
     cursor: pointer;
     transition: background 0.12s ease, transform 0.05s ease;
   }
-  .tray .add:hover { background: color-mix(in srgb, var(--rd-fg) 12%, var(--rd-die-face)); }
-  .tray .add:active { transform: translateY(1px); }
+  .tray .add:hover:not(:disabled) { background: color-mix(in srgb, var(--rd-fg) 12%, var(--rd-die-face)); }
+  .tray .add:active:not(:disabled) { transform: translateY(1px); }
+  .tray .add:disabled { opacity: 0.45; cursor: default; }
   .tray .add .swatch {
     width: 0.85em;
     height: 0.85em;
@@ -931,6 +937,7 @@ class DiceOverlay {
     const pool = el('div', 'pool');
 
     const tray = el('div', 'tray');
+    const trayAdds = new Map(); // sides -> add button, for the per-type cap
     for (const sides of this._traySides) {
       const btn = el('button', 'add');
       btn.type = 'button';
@@ -939,9 +946,11 @@ class DiceOverlay {
       btn.append(swatch, document.createTextNode(`d${sides}`));
       btn.setAttribute('aria-label', `Add a d${sides}`);
       btn.addEventListener('click', () => {
+        if (this._pool.filter((s) => s === sides).length >= MAX_COUNT) return;
         this._pool.push(sides);
         this._renderPool();
       });
+      trayAdds.set(sides, btn);
       tray.appendChild(btn);
     }
 
@@ -960,15 +969,21 @@ class DiceOverlay {
     tray.appendChild(modctl);
 
     wrap.append(pool, tray);
-    this._els = { ...this._els, pool, modval };
+    this._els = { ...this._els, pool, modval, trayAdds };
     return wrap;
   }
 
   // Re-render the pool chips and modifier readout, and keep `this.parsed` in
   // sync so Roll runs the current pool through the shared pipeline.
   _renderPool() {
-    const { pool, modval, rerollBtn } = this._els;
+    const { pool, modval, rerollBtn, trayAdds } = this._els;
     pool.textContent = '';
+
+    // Cap each die type at MAX_COUNT — the same per-term limit parseFormula
+    // enforces — by disabling its add button once reached.
+    for (const [sides, btn] of trayAdds) {
+      btn.disabled = this._pool.filter((s) => s === sides).length >= MAX_COUNT;
+    }
 
     if (!this._pool.length && this._mod === 0) {
       pool.appendChild(el('span', 'empty', 'Add dice below to build a roll'));
@@ -1034,12 +1049,16 @@ class DiceOverlay {
     for (const term of result.terms) {
       if (term.type !== 'dice') continue;
       for (const r of term.rolls) {
-        // Flag the exact die(s) that produced the crit so they glow: a kept d20
-        // showing 20 (success) or 1 (failure), matching the roll's crit
-        // direction. Both faces can appear in a mixed pool, but only the winning
-        // direction lights up.
+        // Flag the exact die(s) that produced the crit so they glow: a kept,
+        // added (not subtracted) d20 showing 20 (success) or 1 (failure),
+        // matching the roll's crit direction. Both faces can appear in a mixed
+        // pool, but only the winning direction lights up.
         const dieCrit =
-          crit && r.kept && term.sides === 20 && r.value === (crit === 'success' ? 20 : 1)
+          crit &&
+          r.kept &&
+          term.sides === 20 &&
+          term.sign > 0 &&
+          r.value === (crit === 'success' ? 20 : 1)
             ? crit
             : null;
         const die = buildDie(r, dieCrit);
@@ -1171,10 +1190,12 @@ export class RollDice extends HTMLElement {
     }
 
     // Compact mode renders just the die icon; the formula stays available to
-    // assistive tech via aria-label and to sighted users via title.
+    // assistive tech via aria-label and to sighted users via title. An invalid
+    // formula keeps its text even in compact mode — a hover-only title is the
+    // sole other signal, invisible on touch devices.
     const compact = this.hasAttribute('compact');
     this._chip.innerHTML = DIE_ICON;
-    if (!compact) this._chip.appendChild(document.createTextNode(label || 'invalid'));
+    if (!compact || this._error) this._chip.appendChild(document.createTextNode(label || 'invalid'));
 
     if (this._error) {
       this._chip.classList.add('error');
@@ -1214,7 +1235,8 @@ export class RollDice extends HTMLElement {
 // Attributes:
 //   position   bottom-right (default) | bottom-left | top-right | top-left
 //   dice       space/comma-separated die sizes to offer, e.g. "6 20"
-//              (defaults to the standard 4 6 8 10 12 20 set)
+//              (defaults to the standard 4 6 8 10 12 20 set; sizes outside
+//              2–MAX_SIDES are ignored, matching the formula parser's limits)
 // ---------------------------------------------------------------------------
 
 export class RollAnyDice extends HTMLElement {
@@ -1232,6 +1254,7 @@ export class RollAnyDice extends HTMLElement {
       fab.innerHTML = DIE_ICON;
       fab.addEventListener('click', () => this._activate());
       this._root.appendChild(fab);
+      this._fab = fab;
     }
     if (!this.hasAttribute('position')) this.setAttribute('position', 'bottom-right');
   }
@@ -1243,13 +1266,15 @@ export class RollAnyDice extends HTMLElement {
     const sizes = attr
       .split(/[\s,]+/)
       .map((s) => parseInt(s, 10))
-      .filter((n) => Number.isInteger(n) && n >= 2);
+      .filter((n) => Number.isInteger(n) && n >= 2 && n <= MAX_SIDES);
     return sizes.length ? sizes : null;
   }
 
   _activate() {
+    // The focusable element is the fab inside the shadow root, not the host —
+    // close() returns focus to the opener, and focus() on the host is a no-op.
     getOverlay().openBuilder(
-      this,
+      this._fab,
       (result) => {
         this.dispatchEvent(
           new CustomEvent('roll', { detail: result, bubbles: true, composed: true })
@@ -1263,8 +1288,9 @@ export class RollAnyDice extends HTMLElement {
 // ---------------------------------------------------------------------------
 // <roll-log> — a corner widget showing the recent-rolls log from localStorage.
 // A round toggle button expands into a scrollable panel of the last rolls
-// (newest first) with a Clear button. Updates live on every `roll` event and
-// when another tab writes to the log (the `storage` event).
+// (newest first) with a Clear button. Updates live on every `roll` event, on
+// same-tab clears (the `roll-log-clear` event) and when another tab writes to
+// the log (the `storage` event).
 //
 // Attributes:
 //   position   bottom-left (default) | bottom-right | top-left | top-right
@@ -1318,14 +1344,17 @@ export class RollLog extends HTMLElement {
     }
     if (!this.hasAttribute('position')) this.setAttribute('position', 'bottom-left');
     // `roll` events bubble (composed) to the document from every component;
+    // `roll-log-clear` fires when any Clear button in this tab wipes the log;
     // `storage` fires when another tab appends to the same log.
     document.addEventListener('roll', this._refresh);
+    document.addEventListener('roll-log-clear', this._refresh);
     window.addEventListener('storage', this._refresh);
     this._renderEntries();
   }
 
   disconnectedCallback() {
     document.removeEventListener('roll', this._refresh);
+    document.removeEventListener('roll-log-clear', this._refresh);
     window.removeEventListener('storage', this._refresh);
   }
 

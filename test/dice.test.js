@@ -1,12 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { parseFormula, roll, poolToParsed, critFromResult } from '../src/dice.js';
+import { parseFormula, roll, rollDie, poolToParsed, critFromResult } from '../src/dice.js';
 
 // Build a minimal roll-result shape for critFromResult (which only reads
-// terms[].type/sides/rolls[].value/kept), so crit detection can be tested
+// terms[].type/sign/sides/rolls[].value/kept), so crit detection can be tested
 // deterministically without relying on random rolls.
-function diceTerm(sides, values, kept) {
+function diceTerm(sides, values, kept, sign = 1) {
   return {
     type: 'dice',
+    sign,
     sides,
     rolls: values.map((value, i) => ({ value, sides, kept: kept ? kept[i] : true })),
   };
@@ -159,6 +160,27 @@ describe('poolToParsed (builder pool -> parsed)', () => {
       expect(r.total).toBeLessThanOrEqual(34);
     }
   });
+
+  it('enforces the same sides limits as parseFormula', () => {
+    expect(() => poolToParsed([1], 0)).toThrow();
+    expect(() => poolToParsed([1001], 0)).toThrow();
+    expect(() => poolToParsed([9999999999], 0)).toThrow();
+    expect(poolToParsed([1000], 0).terms[0].sides).toBe(1000);
+  });
+
+  it('enforces the same per-term count limit as parseFormula', () => {
+    expect(poolToParsed(Array(100).fill(6), 0).terms[0].count).toBe(100);
+    expect(() => poolToParsed(Array(101).fill(6), 0)).toThrow();
+  });
+});
+
+describe('rollDie', () => {
+  it('terminates and stays in range for sides past the 32-bit sampling limit', () => {
+    const sides = 2 ** 53;
+    const v = rollDie(sides);
+    expect(v).toBeGreaterThanOrEqual(1);
+    expect(v).toBeLessThanOrEqual(sides);
+  });
 });
 
 describe('critFromResult', () => {
@@ -194,5 +216,15 @@ describe('critFromResult', () => {
 
   it('returns null when there is no d20 at all', () => {
     expect(critFromResult(resultOf(diceTerm(6, [6, 6])))).toBe(null);
+  });
+
+  it('ignores a subtracted d20 — a high roll there is a bad outcome, not a crit', () => {
+    expect(critFromResult(resultOf(diceTerm(20, [20], null, -1)))).toBe(null);
+    expect(critFromResult(resultOf(diceTerm(20, [1], null, -1)))).toBe(null);
+  });
+
+  it('still crits on the added d20 when a subtracted one is present', () => {
+    const r = resultOf(diceTerm(20, [20]), diceTerm(20, [1], null, -1));
+    expect(critFromResult(r)).toBe('success');
   });
 });

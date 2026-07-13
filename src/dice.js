@@ -16,8 +16,8 @@
 //   group 5: flat modifier   (digits)            — modifier term only
 const TERM_RE = /([+-]?)\s*(?:(\d*)d(\d+)((?:k[hl]|d[hl])\d+)?|(\d+))/gi;
 
-const MAX_COUNT = 100; // guard against absurd dice pools
-const MAX_SIDES = 1000;
+export const MAX_COUNT = 100; // guard against absurd dice pools
+export const MAX_SIDES = 1000;
 
 // Parse a formula string into a structured, immutable-ish description.
 // Throws Error with a human-readable message on invalid input.
@@ -101,14 +101,24 @@ export function parseFormula(input) {
 // roll() and the whole render pipeline unchanged. Same-sided dice are grouped
 // into one term, in first-seen order. Returns null if the pool has no dice
 // (matching parseFormula's rule that a roll must contain at least one die).
+// Enforces the same per-term MAX_COUNT / MAX_SIDES guards as parseFormula, so
+// both entry points into roll() share one validation layer.
 export function poolToParsed(pool, mod = 0) {
   if (!pool.length) return null;
 
   const counts = new Map(); // sides -> count, insertion-ordered
-  for (const sides of pool) counts.set(sides, (counts.get(sides) ?? 0) + 1);
+  for (const sides of pool) {
+    if (!Number.isInteger(sides) || sides < 2 || sides > MAX_SIDES) {
+      throw new Error(`Dice sides must be 2–${MAX_SIDES}`);
+    }
+    counts.set(sides, (counts.get(sides) ?? 0) + 1);
+  }
 
   const terms = [];
   for (const [sides, count] of counts) {
+    if (count > MAX_COUNT) {
+      throw new Error(`Dice count must be 1–${MAX_COUNT}`);
+    }
     terms.push({ type: 'dice', sign: 1, count, sides, keep: null });
   }
   if (mod !== 0) {
@@ -132,7 +142,9 @@ export function poolToParsed(pool, mod = 0) {
 // Fair integer in [1, sides] using crypto when available. Rejection-samples
 // to avoid modulo bias.
 export function rollDie(sides) {
-  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+  // Rejection sampling draws 32 bits, so it can only cover sides < 2^32; past
+  // that `max` collapses to 0 and the loop would never terminate.
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues && sides <= 0xffffffff) {
     const max = Math.floor(0xffffffff / sides) * sides;
     const buf = new Uint32Array(1);
     let x;
@@ -187,7 +199,9 @@ export function roll(parsed) {
 // Detect a critical result from a rolled formula, using the standard d20
 // convention: a kept d20 showing a natural 20 is a critical success, a natural
 // 1 is a critical failure. Only kept dice count (a dropped die never crits), and
-// only d20s — the min/max of other dice isn't inherently "critical".
+// only d20s — the min/max of other dice isn't inherently "critical". Subtracted
+// d20s (sign -1) never crit either: a high roll there hurts the total, so
+// celebrating it would invert the outcome.
 //
 // With a pool that produces both (a 20 and a 1 across several d20s), success
 // wins: a natural 20 is the more celebrated event. Returns 'success',
@@ -195,7 +209,7 @@ export function roll(parsed) {
 export function critFromResult(result) {
   let sawOne = false;
   for (const term of result.terms) {
-    if (term.type !== 'dice' || term.sides !== 20) continue;
+    if (term.type !== 'dice' || term.sides !== 20 || term.sign < 0) continue;
     for (const r of term.rolls) {
       if (!r.kept) continue;
       if (r.value === 20) return 'success';
