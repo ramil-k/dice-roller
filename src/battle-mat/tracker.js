@@ -175,10 +175,17 @@ export function buildTracker(container, { storageKey = DEFAULT_KEY } = {}) {
   // Any change — this panel, the mat, another tab — redraws the list, except
   // while an initiative input has focus (a mid-typing mat autosave in another
   // component must not eat the keystrokes; the input commits on change).
+  // Deferred, because our own commits arrive mid focus transition (Tab fires
+  // `change` while focus is between elements, so the guard reads null): a
+  // synchronous rebuild would remove the focused input without a blur and
+  // strand both focus and the in-flight Tab on <body>. One timeout later the
+  // transition is done and the guard sees the true active element.
   const unsubscribe = store.subscribe((e) => {
     if (e.type !== 'change') return;
-    if (root.activeElement?.classList?.contains('init')) return;
-    render();
+    setTimeout(() => {
+      if (root.activeElement?.classList?.contains('init')) return;
+      render();
+    }, 0);
   });
   render();
 
