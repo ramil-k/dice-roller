@@ -1,30 +1,31 @@
 // <add-to-battle> — an "add this creature to the battle" button for content
 // pages (bestiary entries, character sheets, index cards). Every click adds
-// one more *instance* of the creature to the persistent token pool that
-// feeds the battle mat's Party/Foes tabs; the second and later instances of
-// a type get a random adjective ("Reckless Wolf") so the DM can tell them
-// apart on the mat and in the initiative tracker. Instances are removed from
-// the pool in the mat's pool UI.
+// one more combatant to the shared encounter — a token node in the same JSON
+// Canvas document the battle mat and initiative tracker use — so the creature
+// shows up in the tracker immediately and on the map (new tokens stack near
+// the corner for the DM to fan out). The second and later instances of a type
+// get a random adjective ("Reckless Wolf") so they can be told apart.
 //
 // Usage:
 //   <add-to-battle name="Wolf" kind="monster" image="/wolf.jpg"
 //     hp="11" ac="13" init-mod="2" size="medium">Add to battle</add-to-battle>
 //   <add-to-battle compact name="Wolf" ...></add-to-battle>
 //
-// This module is the *eager* half: the pool store loads via a dynamic
+// This module is the *eager* half: the encounter store loads via a dynamic
 // import() on the first click. The instance-count badge works without the
-// chunk — it re-reads localStorage on the `storage` event (other tabs) and
-// on `battle-mat-roster-change` (this tab, echoed by the store).
+// chunk — it re-reads the encounter document from localStorage on the
+// `storage` event (other tabs) and on `battle-mat-change` (this tab, echoed
+// by the store).
 //
 // Attributes:
 //   name        creature/type name (required)
-//   kind        player | monster (default player) — picks the pool tab
-//   image       avatar URL for the pool and tokens
+//   kind        player | monster (default player) — token ring color
+//   image       avatar URL for the token
 //   size        D&D size word (tiny…gargantuan) — token footprint in cells
-//   hp, ac      combat stats copied onto placed tokens
+//   hp, ac      combat stats shown in the tracker
 //   init-mod    initiative modifier (the tracker offers a 1d20±mod roll chip)
-//   roster-key  pool localStorage key (default "battle-mat-roster"), must
-//               match the paired <battle-mat>
+//   storage-key encounter localStorage key (default "battle-mat-canvas"),
+//               must match the paired <battle-mat> / <initiative-tracker>
 //   label-added transient click feedback text (default "Added")
 //   compact     icon-only mode for tight rows
 //
@@ -35,7 +36,8 @@
 //
 // A normal in-flow element. Theming via --bm-atb-* custom properties.
 
-const DEFAULT_ROSTER_KEY = 'battle-mat-roster';
+const DEFAULT_STORAGE_KEY = 'battle-mat-canvas';
+const EXT = 'x-battleMat';
 
 const DEFAULT_ADJECTIVES = [
   'Reckless', 'Fearless', 'Cowardly', 'Sneaky', 'Grumpy', 'Jolly', 'Sleepy', 'Rabid', 'Lazy', 'Hungry',
@@ -136,11 +138,18 @@ const SWORD_ICON = `
   </svg>
 `;
 
-function countInPool(key, baseName, kind, storage = globalThis.localStorage) {
+// Count combatants of a type directly from the stored encounter document,
+// without loading the store/document chunk (the badge must stay lightweight).
+function countInEncounter(key, baseName, kind, storage = globalThis.localStorage) {
   try {
-    const list = JSON.parse(storage.getItem(key));
-    if (!Array.isArray(list)) return 0;
-    return list.filter((e) => e && e.baseName === baseName && e.kind === kind).length;
+    const doc = JSON.parse(storage.getItem(key));
+    if (!doc || !Array.isArray(doc.nodes)) return 0;
+    return doc.nodes.filter((n) => {
+      const ext = n?.[EXT];
+      if (!ext || ext.kind !== 'token') return false;
+      const base = ext.baseName ?? ext.name;
+      return base === baseName && (ext.tokenKind ?? 'player') === kind;
+    }).length;
   } catch {
     return 0;
   }
@@ -150,8 +159,8 @@ export class AddToBattle extends HTMLElement {
   // Override once per page to localize instance adjectives.
   static adjectives = DEFAULT_ADJECTIVES;
 
-  get rosterKey() {
-    return this.getAttribute('roster-key') ?? DEFAULT_ROSTER_KEY;
+  get storageKey() {
+    return this.getAttribute('storage-key') ?? DEFAULT_STORAGE_KEY;
   }
 
   get kind() {
@@ -192,23 +201,23 @@ export class AddToBattle extends HTMLElement {
       this._root.append(style, this._btn);
 
       this._refresh = (e) => {
-        if (e?.type === 'storage' && e.key !== this.rosterKey) return;
-        if (e?.type === 'battle-mat-roster-change' && e.detail?.key !== this.rosterKey) return;
+        if (e?.type === 'storage' && e.key !== this.storageKey) return;
+        if (e?.type === 'battle-mat-change' && e.detail?.key !== this.storageKey) return;
         this._renderCount();
       };
     }
     window.addEventListener('storage', this._refresh);
-    window.addEventListener('battle-mat-roster-change', this._refresh);
+    window.addEventListener('battle-mat-change', this._refresh);
     this._renderCount();
   }
 
   disconnectedCallback() {
     window.removeEventListener('storage', this._refresh);
-    window.removeEventListener('battle-mat-roster-change', this._refresh);
+    window.removeEventListener('battle-mat-change', this._refresh);
   }
 
   _renderCount() {
-    const n = countInPool(this.rosterKey, this.getAttribute('name') ?? '', this.kind);
+    const n = countInEncounter(this.storageKey, this.getAttribute('name') ?? '', this.kind);
     if (n > 0) {
       this.dataset.count = n;
       this._badge.textContent = `×${n}`;
@@ -222,25 +231,32 @@ export class AddToBattle extends HTMLElement {
     if (this._busy) return;
     this._busy = true;
     try {
-      const { getRosterStore } = await import('./battle-mat/roster-store.js');
+      const [{ getStore }, { addCombatant }, { getExt }] = await Promise.all([
+        import('./battle-mat/store.js'),
+        import('./battle-mat/combat.js'),
+        import('./battle-mat/canvas-doc.js'),
+      ]);
       const attr = (a) => this.getAttribute(a) ?? undefined;
-      getRosterStore(this.rosterKey).add(
+      const store = getStore(this.storageKey);
+      addCombatant(
+        store.doc,
         {
           name: attr('name'),
-          image: attr('image'),
           kind: this.kind,
+          image: attr('image'),
           size: attr('size'),
           hp: attr('hp'),
           ac: attr('ac'),
           initMod: attr('init-mod'),
         },
-        { adjectives: AddToBattle.adjectives },
+        { adjectives: AddToBattle.adjectives, cellSize: getExt(store.doc).grid.cellSize },
       );
+      store.commit();
       this._btn.classList.add('flash');
       clearTimeout(this._flashId);
       this._flashId = setTimeout(() => this._btn.classList.remove('flash'), 1200);
     } catch (err) {
-      console.error('add-to-battle: failed to load the pool module', err);
+      console.error('add-to-battle: failed to add the combatant', err);
     } finally {
       this._busy = false;
     }

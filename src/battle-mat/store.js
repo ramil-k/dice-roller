@@ -92,6 +92,11 @@ export function getStore(key = DEFAULT_KEY, { storage = globalThis.localStorage,
   const subscribers = new Set();
   const notify = (event) => {
     for (const fn of [...subscribers]) fn(event);
+    // a DOM-level echo of document changes for lightweight listeners (the
+    // <add-to-battle> instance badge) that don't hold a store subscription
+    if (event.type === 'change' && typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('battle-mat-change', { detail: { key } }));
+    }
   };
   const autosaver = createAutosaver(key, {
     delay,
@@ -112,7 +117,12 @@ export function getStore(key = DEFAULT_KEY, { storage = globalThis.localStorage,
       notify({ type: 'change', full: true });
     },
     commit() {
+      // Structural changes (add/remove token, turn, stat edits) are infrequent
+      // and things watch localStorage for them — the <add-to-battle> badge and
+      // other tabs — so write immediately instead of on the debounce. (Only
+      // the high-frequency viewport `save()` stays debounced.)
       autosaver.schedule(doc);
+      autosaver.flush();
       notify({ type: 'change', full: false });
     },
     save() {

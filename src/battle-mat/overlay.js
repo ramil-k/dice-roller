@@ -24,7 +24,6 @@ import {
 } from './canvas-doc.js';
 import { clampCellSize, snapTokenOrigin } from './grid.js';
 import { getStore, DEFAULT_KEY } from './store.js';
-import { getRosterStore, DEFAULT_ROSTER_KEY } from './roster-store.js';
 import { CATEGORIES, iconUrl } from './registry.js';
 import { buildScene, render, applyViewport, updateGrid } from './view.js';
 import { attachTools } from './tools.js';
@@ -164,23 +163,6 @@ const OVERLAY_CSS = `
   .avatar:hover { background: var(--bm-fg); }
   .avatar[aria-pressed="true"] { border-color: var(--bm-accent); box-shadow: 0 0 0 2px var(--bm-accent); }
   .avatar img { width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
-  .avatar-wrap { position: relative; flex: 0 0 auto; }
-  .avatar-remove {
-    position: absolute;
-    top: -0.3rem;
-    right: -0.3rem;
-    width: 1.15rem;
-    height: 1.15rem;
-    padding: 0;
-    border: 1px solid var(--bm-edge);
-    border-radius: 50%;
-    background: var(--bm-bg);
-    color: var(--bm-muted);
-    font-size: 0.8rem;
-    line-height: 1;
-    cursor: pointer;
-  }
-  .avatar-remove:hover { color: var(--bm-accent); border-color: var(--bm-accent); }
   .pool-ghost {
     position: fixed;
     transform: translate(-50%, -50%);
@@ -322,20 +304,15 @@ class BattleMatOverlay {
     this._onKeydown = this._onKeydown.bind(this);
   }
 
-  open({ opener, roster = [], storageKey = DEFAULT_KEY, rosterKey = DEFAULT_ROSTER_KEY } = {}) {
+  open({ opener, roster = [], storageKey = DEFAULT_KEY } = {}) {
     this.opener = opener ?? null;
     this.roster = roster;
     this.storageKey = storageKey;
-    // the encounter document is shared (initiative tracker etc.) — all edits
-    // flow through the per-key store, and re-renders through its events
+    // the encounter document is shared (initiative tracker, add-to-battle) —
+    // all edits flow through the per-key store, re-renders through its events
     this.store = getStore(storageKey);
     this._unsubscribe?.();
     this._unsubscribe = this.store.subscribe((e) => this._onStoreEvent(e));
-    // the persistent pool (<add-to-battle> instances) feeds the Party/Foes
-    // tabs; pool edits — this overlay's remove buttons, other tabs — rebuild it
-    this.rosterStore = getRosterStore(rosterKey);
-    this._unsubRoster?.();
-    this._unsubRoster = this.rosterStore.subscribe(() => this._rebuildPool());
     this.tool = 'select';
     this.color = '1';
     this._buildShell();
@@ -349,8 +326,6 @@ class BattleMatOverlay {
     this.tools?.detach();
     this._unsubscribe?.();
     this._unsubscribe = null;
-    this._unsubRoster?.();
-    this._unsubRoster = null;
     this.store?.flush();
     document.removeEventListener('keydown', this._onKeydown, true);
     if (this.host.parentNode) this.host.parentNode.removeChild(this.host);
@@ -473,9 +448,9 @@ class BattleMatOverlay {
 
   // ---- token pool ----------------------------------------------------------
 
-  // Tabs: Party / Foes first — the persistent pool (<add-to-battle>
-  // instances, removable) merged with the page-provided `roster` property —
-  // then the built-in registry categories.
+  // Tabs: page-provided `roster` Party / Foes first, then the built-in
+  // registry categories. (Content pages add combatants straight to the
+  // encounter via <add-to-battle>; this pool is for ad-hoc extra tokens.)
   _poolTabs() {
     const entry = (t, source) => ({
       name: t.name ?? 'Token',
@@ -485,21 +460,15 @@ class BattleMatOverlay {
       hp: t.hp,
       ac: t.ac,
       initMod: t.initMod,
-      // pool instances carry an id and can be removed from the pool UI
-      poolId: source === 'pool' ? t.id : null,
-      source: source === 'pool' ? 'roster' : source,
+      source,
     });
     const tabs = [];
-    const own = this.rosterStore?.entries ?? [];
-    const legacy = this.roster;
-    const players = [...own.filter((t) => t.kind !== 'monster').map((t) => entry(t, 'pool')),
-      ...legacy.filter((t) => t.kind !== 'monster').map((t) => entry(t, 'roster'))];
-    const monsters = [...own.filter((t) => t.kind === 'monster').map((t) => entry(t, 'pool')),
-      ...legacy.filter((t) => t.kind === 'monster').map((t) => entry(t, 'roster'))];
-    if (players.length) tabs.push({ id: 'party', label: 'Party', entries: players });
+    const players = this.roster.filter((t) => t.kind !== 'monster');
+    const monsters = this.roster.filter((t) => t.kind === 'monster');
+    if (players.length) tabs.push({ id: 'party', label: 'Party', entries: players.map((t) => entry(t, 'roster')) });
     if (monsters.length) {
       // "Foes", not "Monsters" — the registry has a Monsters category already
-      tabs.push({ id: 'foes', label: 'Foes', entries: monsters });
+      tabs.push({ id: 'foes', label: 'Foes', entries: monsters.map((t) => entry(t, 'roster')) });
     }
     for (const cat of CATEGORIES) {
       tabs.push({
@@ -522,7 +491,6 @@ class BattleMatOverlay {
 
     const data = this._poolTabs();
     const select = (id) => {
-      this._poolTab = id;
       for (const btn of tabs.children) btn.setAttribute('aria-selected', String(btn.dataset.tab === id));
       const tab = data.find((t) => t.id === id);
       avatars.replaceChildren();
@@ -540,21 +508,8 @@ class BattleMatOverlay {
       tabs.appendChild(btn);
     }
     pool.append(tabs, avatars);
-    // keep the previously selected tab across pool rebuilds when it survives
-    const initial = data.find((t) => t.id === this._poolTab) ?? data[0];
-    if (initial) select(initial.id);
-    this._poolEl = pool;
+    if (data.length) select(data[0].id);
     return pool;
-  }
-
-  // The pool depends on roster-store state; rebuild it in place on changes
-  // (an entry removed here, an <add-to-battle> click on the page, another tab).
-  _rebuildPool() {
-    if (!this._poolEl?.isConnected) return;
-    const next = this._buildPool();
-    // _buildPool assigned this._poolEl = next; swap the old element out
-    const prev = this._rootEl.querySelector('.pool');
-    if (prev && prev !== next) prev.replaceWith(next);
   }
 
   _buildAvatar(entry) {
@@ -587,17 +542,7 @@ class BattleMatOverlay {
       this._placingBtn = btn;
       this.tools.armPlacement(entry);
     });
-    if (entry.poolId === null) return btn;
-
-    // pool instances get a remove control (a sibling — buttons don't nest)
-    const wrap = el('span', 'avatar-wrap');
-    const remove = el('button', 'avatar-remove', '×');
-    remove.type = 'button';
-    remove.setAttribute('aria-label', `Remove ${entry.name} from the pool`);
-    remove.title = `Remove ${entry.name}`;
-    remove.addEventListener('click', () => this.rosterStore.remove(entry.poolId));
-    wrap.append(btn, remove);
-    return wrap;
+    return btn;
   }
 
   // ---- settings ------------------------------------------------------------

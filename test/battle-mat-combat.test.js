@@ -10,6 +10,9 @@ import {
   getAc,
   setAc,
   getInitMod,
+  baseNameOf,
+  countOfType,
+  addCombatant,
   turnOrder,
   nextTurn,
   resetCombat,
@@ -144,6 +147,67 @@ describe('combat stats (hp / ac / initMod)', () => {
     const stroke = doc.nodes.find((n) => n[EXT]?.kind === 'stroke');
     expect(setHp(doc, stroke.id, 5)).toBe(false);
     expect(setAc(doc, 'missing', 5)).toBe(false);
+  });
+});
+
+describe('addCombatant', () => {
+  const ADJ = ['Reckless', 'Sly', 'Grumpy'];
+  // deterministic rand: always pick the first free adjective
+  const first = () => 0;
+
+  it('adds a token combatant with stats and size footprint', () => {
+    const doc = emptyDoc();
+    const t = addCombatant(
+      doc,
+      { name: 'Wolf', kind: 'monster', image: 'w.jpg', size: 'large', hp: 11, ac: 13, initMod: 2 },
+      { cellSize: 64 },
+    );
+    expect(t[EXT].kind).toBe('token');
+    expect(t[EXT].name).toBe('Wolf');
+    expect(t[EXT].baseName).toBe('Wolf');
+    expect(t[EXT].tokenKind).toBe('monster');
+    expect(t.width).toBe(128); // large -> 2 cells
+    expect(getHp(t)).toBe(11);
+    expect(getHpMax(t)).toBe(11);
+    expect(getAc(t)).toBe(13);
+    expect(getInitMod(t)).toBe(2);
+    expect(combatants(doc)).toHaveLength(1);
+  });
+
+  it('first instance is plain, later ones get an unused adjective', () => {
+    const doc = emptyDoc();
+    const a = addCombatant(doc, { name: 'Wolf', kind: 'monster' }, { adjectives: ADJ, rand: first });
+    const b = addCombatant(doc, { name: 'Wolf', kind: 'monster' }, { adjectives: ADJ, rand: first });
+    const c = addCombatant(doc, { name: 'Wolf', kind: 'monster' }, { adjectives: ADJ, rand: first });
+    expect(a[EXT].name).toBe('Wolf');
+    expect(a[EXT].adjective).toBeUndefined();
+    expect(b[EXT].name).toBe('Reckless Wolf'); // first free
+    expect(c[EXT].name).toBe('Sly Wolf'); // Reckless now used -> next free
+    expect(baseNameOf(c)).toBe('Wolf');
+  });
+
+  it('falls back to numeric suffixes once adjectives run dry', () => {
+    const doc = emptyDoc();
+    for (let i = 0; i < 3; i++) addCombatant(doc, { name: 'Rat', kind: 'monster' }, { adjectives: ['Sly'], rand: first });
+    const names = combatants(doc).map((n) => n[EXT].name).sort();
+    expect(names).toEqual(['Rat', 'Rat 3', 'Sly Rat']);
+  });
+
+  it('same name different kinds do not collide', () => {
+    const doc = emptyDoc();
+    addCombatant(doc, { name: 'Ghost', kind: 'monster' }, { adjectives: ADJ, rand: first });
+    const p = addCombatant(doc, { name: 'Ghost', kind: 'player' }, { adjectives: ADJ, rand: first });
+    expect(p[EXT].name).toBe('Ghost');
+  });
+
+  it('countOfType counts by base name and kind', () => {
+    const doc = emptyDoc();
+    addCombatant(doc, { name: 'Wolf', kind: 'monster' }, { adjectives: ADJ, rand: first });
+    addCombatant(doc, { name: 'Wolf', kind: 'monster' }, { adjectives: ADJ, rand: first });
+    addCombatant(doc, { name: 'Wolf', kind: 'player' }, { adjectives: ADJ, rand: first });
+    expect(countOfType(doc, 'Wolf', 'monster')).toBe(2);
+    expect(countOfType(doc, 'Wolf', 'player')).toBe(1);
+    expect(countOfType(doc, 'Bear', 'monster')).toBe(0);
   });
 });
 

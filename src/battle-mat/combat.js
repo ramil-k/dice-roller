@@ -7,10 +7,86 @@
 //
 // DOM-free; covered by test/battle-mat-combat.test.js.
 
-import { EXT, getExt, nodeKind, getNode } from './canvas-doc.js';
+import { EXT, getExt, nodeKind, getNode, addNode, makeToken, cellsForSize } from './canvas-doc.js';
 
 export function combatants(doc) {
   return doc.nodes.filter((n) => nodeKind(n) === 'token');
+}
+
+// The base name of a combatant is its display name with the instance
+// adjective (if any) stripped back off, so "Reckless Wolf" and "Wolf" count
+// as the same type. We store the base name explicitly so this never has to
+// guess; older tokens without it fall back to the full name.
+export function baseNameOf(node) {
+  return node[EXT]?.baseName ?? node[EXT]?.name ?? '';
+}
+
+// How many combatants of a given type (base name + kind) are already in the
+// encounter — drives the <add-to-battle> instance badge and the naming below.
+export function countOfType(doc, baseName, kind = 'player') {
+  return combatants(doc).filter(
+    (n) => baseNameOf(n) === baseName && (n[EXT].tokenKind ?? 'player') === kind,
+  ).length;
+}
+
+// Add one combatant to the encounter as a token node, and return it. The
+// first instance of a type keeps the plain name; the second and later ones
+// get a random unused adjective ("Reckless Wolf"), falling back to a numeric
+// suffix once the adjective list (or the absence of one) runs dry. New tokens
+// are stacked near the top-left of the map with a small per-instance offset so
+// the DM can fan them out; combat stats and size ride along.
+//
+// `rand` is injectable for deterministic tests (defaults to Math.random).
+export function addCombatant(
+  doc,
+  { name = 'Token', kind = 'player', image, size, hp, ac, initMod } = {},
+  { adjectives = [], cellSize = 64, rand = Math.random } = {},
+) {
+  const baseName = name;
+  const tokenKind = kind === 'monster' ? 'monster' : 'player';
+  const siblings = combatants(doc).filter(
+    (n) => baseNameOf(n) === baseName && (n[EXT].tokenKind ?? 'player') === tokenKind,
+  );
+
+  let displayName = baseName;
+  let adjective = null;
+  if (siblings.length) {
+    const used = new Set(siblings.map((n) => n[EXT].adjective).filter(Boolean));
+    const free = adjectives.filter((a) => !used.has(a));
+    if (free.length) {
+      adjective = free[Math.floor(rand() * free.length)];
+      displayName = `${adjective} ${baseName}`;
+    } else {
+      displayName = `${baseName} ${siblings.length + 1}`;
+    }
+  }
+
+  const span = cellSize * cellsForSize(size);
+  // stack new arrivals down-right from the corner, one grid step per existing
+  // token, wrapping so a big encounter doesn't march off the bottom
+  const n = combatants(doc).length;
+  const perRow = 8;
+  const x = cellSize + (n % perRow) * cellSize;
+  const y = cellSize + Math.floor(n / perRow) * cellSize;
+
+  const token = makeToken({
+    x,
+    y,
+    size: span,
+    url: image,
+    name: displayName,
+    source: 'roster',
+    tokenKind,
+    hp: hp == null ? undefined : Number(hp),
+    hpMax: hp == null ? undefined : Number(hp),
+    ac: ac == null ? undefined : Number(ac),
+    initMod: initMod == null ? undefined : Number(initMod),
+  });
+  // remember what we need to keep instance naming stable across later adds
+  token[EXT].baseName = baseName;
+  if (adjective) token[EXT].adjective = adjective;
+  addNode(doc, token);
+  return token;
 }
 
 // Numeric combat fields live on the token's extension; a cleared input ('')

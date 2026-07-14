@@ -142,7 +142,7 @@ describe('getStore', () => {
     expect(getStore(freshKey(), { storage }).doc.nodes).toHaveLength(0);
   });
 
-  it('commit notifies subscribers and persists after the debounce', () => {
+  it('commit persists immediately (not on the debounce) and notifies', () => {
     const storage = memoryStorage();
     const key = freshKey();
     const store = getStore(key, { storage, delay: 100 });
@@ -150,12 +150,13 @@ describe('getStore', () => {
     const unsubscribe = store.subscribe((e) => events.push(e));
     addNode(store.doc, makeToken({ x: 0, y: 0, url: 'u' }));
     store.commit();
-    expect(events).toEqual([{ type: 'change', full: false }]);
-    vi.advanceTimersByTime(100);
+    // written synchronously — the add-to-battle badge and other tabs must see
+    // structural changes at once, without waiting out the debounce
     expect(loadDoc(key, storage).nodes).toHaveLength(1);
+    // the flush fires save-result before the change notification
     expect(events).toEqual([
-      { type: 'change', full: false },
       { type: 'save-result', ok: true },
+      { type: 'change', full: false },
     ]);
     unsubscribe();
     store.commit();

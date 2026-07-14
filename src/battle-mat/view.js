@@ -76,17 +76,47 @@ function renderToken(node) {
   // inline style, not a presentation attribute: the token-ring class sets a
   // default stroke in CSS, which would win over setAttribute('stroke', ...)
   if (node.color) ring.style.stroke = resolveColor(node.color);
-  const img = svgEl('image', {
-    x: size * 0.08,
-    y: size * 0.08,
-    width: size * 0.84,
-    height: size * 0.84,
-    href: node.url,
-    preserveAspectRatio: 'xMidYMid meet',
-  });
+
+  // Photo avatars (roster / add-to-battle portraits) should fill the whole
+  // token circle — clip to the ring and cover. The built-in registry icons
+  // are transparent line-art and read better inset and fully visible, so they
+  // keep the padded contain fit.
+  const parts = [ring];
   const title = svgEl('title');
   title.textContent = ext.name || 'Token';
-  return [ring, img, title];
+  if (!node.url) return [ring, title];
+
+  if (ext.source === 'registry') {
+    parts.push(svgEl('image', {
+      x: size * 0.08,
+      y: size * 0.08,
+      width: size * 0.84,
+      height: size * 0.84,
+      href: node.url,
+      preserveAspectRatio: 'xMidYMid meet',
+    }));
+  } else {
+    const clipId = `bm-clip-${node.id}`;
+    const clip = svgEl('clipPath', { id: clipId });
+    // clip a hair inside the stroke so the ring stays a clean circle
+    clip.appendChild(svgEl('circle', { cx: size / 2, cy: size / 2, r: size / 2 - 1 }));
+    parts.push(clip);
+    parts.push(svgEl('image', {
+      x: 0,
+      y: 0,
+      width: size,
+      height: size,
+      href: node.url,
+      preserveAspectRatio: 'xMidYMid slice',
+      'clip-path': `url(#${clipId})`,
+    }));
+    // redraw the ring on top so its stroke sits above the covering image
+    const ringTop = ring.cloneNode();
+    ringTop.style.fill = 'none';
+    parts.push(ringTop);
+  }
+  parts.push(title);
+  return parts;
 }
 
 function renderStroke(node) {
