@@ -137,14 +137,23 @@ resolves relative to the entry file. Bundlers handle the split automatically.
 | Attribute     | Values                                                 | Default             |
 | ------------- | ------------------------------------------------------ | ------------------- |
 | `storage-key` | any string — `localStorage` key for this map           | `battle-mat-canvas` |
+| `roster-key`  | `localStorage` key of the persistent token pool        | `battle-mat-roster` |
 | `roster`      | JSON array (see below); the `roster` property wins     | `[]`                |
 
 The button is a normal in-flow element — see
 [Positioning](#positioning-the-widgets) to float it in a corner.
 
-Roster entries are `{ name, image, kind }` where `kind` is `"player"` or
-`"monster"`. They fill the **Party** and **Foes** tabs of the token pool;
-after them come the built-in icon categories (Humanoids, Animals, Monsters).
+The **Party** and **Foes** tabs of the token pool are fed from two sources:
+the persistent pool filled by [`<add-to-battle>`](#add-to-battle--fill-the-token-pool)
+buttons (those entries carry a remove button in the pool UI) and the
+page-provided `roster` array. After them come the built-in icon categories
+(Humanoids, Animals, Monsters).
+
+Roster entries are `{ name, image, kind, size, hp, ac, initMod }` — `kind` is
+`"player"` or `"monster"`, everything after it optional. `size` is a D&D size
+word (`tiny`…`gargantuan`) deciding the token's footprint on the grid (large
+2×2, huge 3×3, gargantuan 4×4 cells); `hp`/`ac`/`initMod` are copied onto the
+token when it is placed and surface in the initiative tracker.
 
 ### Tools
 
@@ -226,6 +235,52 @@ Set the `--bm-*` custom properties on `battle-mat` (button: `--bm-fab-bg`,
 `--bm-surface`, `--bm-fg`, `--bm-muted`, `--bm-accent`, `--bm-edge`,
 `--bm-grid-line`, `--bm-token-player`, `--bm-token-monster`.
 
+## `<add-to-battle>` — fill the token pool
+
+An "add this creature to the battle" button for content pages (bestiary
+entries, character sheets, index cards). Every click adds one more *instance*
+of the creature to the persistent pool feeding the battle mat's Party/Foes
+tabs; the second and later instances of a type get a random adjective
+("Reckless Wolf") so the DM can tell them apart on the mat and in the
+initiative tracker. Instances are removed via the × buttons in the mat's
+pool UI.
+
+```html
+<add-to-battle name="Wolf" kind="monster" image="/wolf.jpg"
+  hp="11" ac="13" init-mod="2" size="medium">Add to battle</add-to-battle>
+```
+
+```js
+import '@ramilkos/roll-dice/add-to-battle';
+```
+
+| Attribute     | Values                                                  | Default             |
+| ------------- | ------------------------------------------------------- | ------------------- |
+| `name`        | creature/type name (required)                           | —                   |
+| `kind`        | `player` \| `monster` — picks the pool tab              | `player`            |
+| `image`       | avatar URL for the pool and placed tokens               | built-in icon       |
+| `size`        | D&D size word (`tiny`…`gargantuan`) — token footprint   | `medium` (1 cell)   |
+| `hp`, `ac`    | combat stats copied onto placed tokens                  | —                   |
+| `init-mod`    | initiative modifier for the tracker's roll chip         | —                   |
+| `roster-key`  | pool key, must match the paired `<battle-mat>`          | `battle-mat-roster` |
+| `label-added` | transient click feedback text                           | `Added`             |
+| `compact`     | icon-only mode for tight rows                           | off                 |
+
+The button shows a live `×N` badge with the number of pool instances of this
+creature (synced across tabs). The element itself is eager and tiny; the pool
+store chunk loads on the first click.
+
+The adjective set is a static property — override it once per page to
+localize:
+
+```js
+import { AddToBattle } from '@ramilkos/roll-dice/add-to-battle';
+AddToBattle.adjectives = ['Отчаянный', 'Трусливый', 'Шутливый'];
+```
+
+Theming: `--bm-atb-bg`, `--bm-atb-fg`, `--bm-atb-muted`, `--bm-atb-accent`,
+`--bm-atb-edge`, `--bm-atb-radius` on the element.
+
 ## `<initiative-tracker>` — turn order
 
 A corner widget that tracks initiative for the battle mat's encounter. It
@@ -244,15 +299,19 @@ import '@ramilkos/roll-dice/initiative-tracker';
 | Attribute     | Values                                                 | Default             |
 | ------------- | ------------------------------------------------------ | ------------------- |
 | `storage-key` | must match the paired `<battle-mat>`                   | `battle-mat-canvas` |
+| `label-*`     | localized UI strings: `label-title`, `label-round`, `label-next`, `label-reset`, `label-empty`, `label-hp`, `label-ac`, `label-init` | English |
 
 The widget is a normal in-flow element; its panel opens below the toggle
 button by default — see [Positioning](#positioning-the-widgets).
 
 The panel lists combatants sorted by initiative (descending; unrolled ones
-last, ties by name), with a number input per row. **Next** advances the turn
-and increments the round on wrap; **Reset** returns to round 1 keeping the
-rolled initiatives. Player and monster rows are color-coded like their token
-rings.
+last, ties by name). Each row shows editable HP (with a `/max` hint when the
+token was placed with hit points), AC, and initiative. When the page has the
+`<roll-dice>` component loaded, each row also gets a compact `1d20±mod` chip
+(the modifier comes from the token's `initMod`) that fills the initiative in.
+**Next** advances the turn and increments the round on wrap; **Reset** returns
+to round 1 keeping the rolled initiatives. Player and monster rows are
+color-coded like their token rings.
 
 Initiative lives on each token node (`x-battleMat.initiative`) and the round /
 active combatant in the document's `combat` extension (see the format above),
@@ -432,11 +491,13 @@ roll(poolToParsed([20, 6, 6], 2)); // build a roll from a pool of die sizes
 - `src/roll-dice.js` — the `<roll-dice>` / `<roll-any-dice>` / `<roll-log>` elements + overlay (library entry).
 - `src/battle-mat.js` — the `<battle-mat>` trigger element (second library entry, eager half).
 - `src/initiative-tracker.js` — the `<initiative-tracker>` widget (third library entry, eager half).
+- `src/add-to-battle.js` — the `<add-to-battle>` pool button (fourth library entry, eager half).
 - `src/battle-mat/` — the lazily-loaded map + tracker implementation:
   `overlay.js` (mat shell), `view.js` (SVG scene), `tools.js` (pointer state
   machine), `tracker.js` (initiative panel), and the pure modules
   `canvas-doc.js`, `grid.js`, `viewport.js`, `combat.js`, `registry.js`,
-  `store.js` (the shared per-key encounter store).
+  `store.js` (the shared per-key encounter store),
+  `roster-store.js` (the persistent token pool).
 - `index.html` — live demo with several formulas and a roll-event log.
 - `test/` — Vitest suites: dice logic, geometry, regularity, and the pure battle-mat modules.
 

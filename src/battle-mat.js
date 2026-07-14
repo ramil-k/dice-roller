@@ -11,8 +11,11 @@
 //   storage-key  localStorage key for this mat's autosaved canvas
 //                (default "battle-mat-canvas"; use distinct keys for
 //                distinct maps)
-//   roster       JSON array of tokens for the pool, e.g.
-//                [{ "name": "Aria", "image": "https://...", "kind": "player" }]
+//   roster-key   localStorage key of the persistent token pool filled by
+//                <add-to-battle> buttons (default "battle-mat-roster")
+//   roster       JSON array of extra pool tokens provided by the page, e.g.
+//                [{ "name": "Aria", "image": "https://...", "kind": "player",
+//                   "size": "large", "hp": 20, "ac": 15, "initMod": 2 }]
 //
 // Properties:
 //   roster       same as the attribute, as a live array (property wins)
@@ -109,6 +112,7 @@ export class BattleMat extends HTMLElement {
         opener: this._fab,
         roster: this.roster,
         storageKey: this.getAttribute('storage-key') ?? 'battle-mat-canvas',
+        rosterKey: this.getAttribute('roster-key') ?? 'battle-mat-roster',
       });
     } catch (err) {
       console.error('battle-mat: failed to load the map module', err);

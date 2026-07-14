@@ -83,6 +83,8 @@
         z-index: 1000;
       }
       battle-mat, initiative-tracker, roll-log { margin: 0.5rem 0 1rem; }
+      .atb-row { display: flex; align-items: center; gap: 0.75rem; margin: 0.5rem 0 1rem; }
+      .atb-row add-to-battle { flex: 0 0 auto; }
     </style>
   </head>
   <body>
@@ -168,6 +170,24 @@
       </p>
       <battle-mat></battle-mat>
 
+      <h2>Add to battle</h2>
+      <p>
+        The <code>&lt;add-to-battle&gt;</code> button belongs on content pages
+        (a bestiary entry, a character sheet). Every click adds one more
+        <em>instance</em> of the creature to the persistent pool feeding the
+        mat's Party/Foes tabs — the second wolf gets a random adjective
+        ("Reckless Wolf") so you can tell them apart. The badge counts
+        instances; remove them with the × buttons in the mat's pool.
+      </p>
+      <div class="atb-row">
+        <add-to-battle name="Wolf" kind="monster" hp="11" ac="13" init-mod="2"
+          image="https://sergeychikin.ru/365/070-animals/wolf.svg">Add wolf</add-to-battle>
+        <add-to-battle name="Ogre" kind="monster" hp="59" ac="11" init-mod="-1" size="large"
+          image="https://sergeychikin.ru/365/100-fantasy/troll.svg">Add ogre (large)</add-to-battle>
+        <add-to-battle compact name="Bat" kind="monster" hp="1" ac="12" init-mod="2"
+          image="https://sergeychikin.ru/365/070-animals/bat.svg"></add-to-battle>
+      </div>
+
       <h2>Initiative tracker</h2>
       <p>
         The <code>&lt;initiative-tracker&gt;</code> element shares the battle
@@ -217,6 +237,7 @@
       import './src/roll-dice.js';
       import './src/battle-mat.js';
       import './src/initiative-tracker.js';
+      import './src/add-to-battle.js';
 
       // Page-provided party/monster roster for the battle-mat token pool;
       // the built-in icon categories appear after these tabs.

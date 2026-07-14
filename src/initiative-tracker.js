@@ -17,6 +17,10 @@
 // Attributes:
 //   storage-key  localStorage key of the encounter, must match the
 //                <battle-mat> it pairs with (default "battle-mat-canvas")
+//   label-title, label-round, label-next, label-reset, label-empty,
+//   label-hp, label-ac, label-init
+//                localized UI strings (defaults are English; see
+//                DEFAULT_LABELS in battle-mat/tracker.js)
 
 const TRACKER_CSS = `
   :host {
@@ -58,7 +62,7 @@ const TRACKER_CSS = `
   .panel {
     display: flex;
     flex-direction: column;
-    width: min(19rem, calc(100vw - 2.5rem));
+    width: min(23rem, calc(100vw - 2.5rem));
     max-height: min(24rem, 70vh);
     border: 1px solid var(--bm-trk-edge);
     border-radius: 0.7rem;
@@ -96,7 +100,7 @@ export class InitiativeTracker extends HTMLElement {
       this._toggle = document.createElement('button');
       this._toggle.type = 'button';
       this._toggle.className = 'toggle';
-      this._toggle.setAttribute('aria-label', 'Initiative tracker');
+      this._toggle.setAttribute('aria-label', this.getAttribute('label-title') ?? 'Initiative tracker');
       this._toggle.setAttribute('aria-expanded', 'false');
       this._toggle.setAttribute('aria-controls', 'panel');
       this._toggle.innerHTML = TRACKER_ICON;
@@ -135,8 +139,15 @@ export class InitiativeTracker extends HTMLElement {
     try {
       const mod = await import('./battle-mat/tracker.js');
       note.remove();
+      // label-* attributes override the English defaults (localization)
+      const labels = {};
+      for (const key of ['title', 'round', 'next', 'reset', 'empty', 'hp', 'ac', 'init']) {
+        const v = this.getAttribute(`label-${key}`);
+        if (v !== null) labels[key] = v;
+      }
       this._tracker = mod.buildTracker(this._panel, {
         storageKey: this.getAttribute('storage-key') ?? 'battle-mat-canvas',
+        labels,
       });
     } catch (err) {
       note.textContent = 'Failed to load';

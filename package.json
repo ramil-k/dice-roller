@@ -35,6 +35,9 @@
     },
     "./initiative-tracker": {
       "import": "./dist/initiative-tracker.js"
+    },
+    "./add-to-battle": {
+      "import": "./dist/add-to-battle.js"
     }
   },
   "publishConfig": {

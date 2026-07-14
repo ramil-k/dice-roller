@@ -31,7 +31,7 @@ jobs:
       # Self-host the library bundle alongside the demo so it can be loaded via
       # a <script> tag straight from Pages (no npm needed). ES-only since the
       # battle-mat split: all entries plus the lazy/shared battle-mat chunks.
-      - run: cp dist/roll-dice.js dist/battle-mat.js dist/initiative-tracker.js dist/battle-mat-*.js dist-demo/
+      - run: cp dist/roll-dice.js dist/battle-mat.js dist/initiative-tracker.js dist/add-to-battle.js dist/battle-mat-*.js dist-demo/
       - uses: actions/upload-pages-artifact@v5
         with:
           path: dist-demo

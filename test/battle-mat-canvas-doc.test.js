@@ -15,6 +15,7 @@ import {
   resolveColor,
   validateCanvas,
   serialize,
+  cellsForSize,
 } from '../src/battle-mat/canvas-doc.js';
 
 const OFFICIAL_TYPES = ['text', 'file', 'link', 'group'];
@@ -174,5 +175,22 @@ describe('validateCanvas', () => {
     const res = validateCanvas({ nodes: [] });
     expect(res.ok).toBe(true);
     expect(res.doc.edges).toEqual([]);
+  });
+});
+
+describe('cellsForSize', () => {
+  it('maps D&D size words to a per-side cell count', () => {
+    expect(cellsForSize('tiny')).toBe(1);
+    expect(cellsForSize('small')).toBe(1);
+    expect(cellsForSize('medium')).toBe(1);
+    expect(cellsForSize('Large')).toBe(2);
+    expect(cellsForSize('huge')).toBe(3);
+    expect(cellsForSize('gargantuan')).toBe(4);
+  });
+
+  it('defaults to one cell for unknown or absent sizes', () => {
+    expect(cellsForSize('колоссальный')).toBe(1);
+    expect(cellsForSize(undefined)).toBe(1);
+    expect(cellsForSize(2)).toBe(1);
   });
 });

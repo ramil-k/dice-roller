@@ -3,11 +3,29 @@
 // Canvas document <battle-mat> edits) and writes initiative/turn state back
 // through it, so the mat and the tracker stay in sync in both directions,
 // including across tabs.
+//
+// Per row: kind-colored dot, name, editable HP (with /max hint), editable AC,
+// editable initiative, and — when the page has the <roll-dice> component
+// loaded — a compact 1d20±mod roll chip that fills the initiative in.
+// Combat stats live on the token nodes (combat.js), so they ride along with
+// map exports and cross-tab sync for free.
 
 import { el } from './dom.js';
 import { EXT, getExt, resolveColor } from './canvas-doc.js';
 import { getStore, DEFAULT_KEY } from './store.js';
-import { turnOrder, getInitiative, setInitiative, nextTurn, resetCombat } from './combat.js';
+import {
+  turnOrder,
+  getInitiative,
+  setInitiative,
+  getHp,
+  getHpMax,
+  setHp,
+  getAc,
+  setAc,
+  getInitMod,
+  nextTurn,
+  resetCombat,
+} from './combat.js';
 
 const PANEL_CSS = `
   .trk-head {
@@ -49,7 +67,7 @@ const PANEL_CSS = `
   .trk-list li {
     display: flex;
     align-items: center;
-    gap: 0.6em;
+    gap: 0.45em;
     padding: 0.3rem 0.8rem;
   }
   .trk-list li.active {
@@ -69,9 +87,10 @@ const PANEL_CSS = `
     white-space: nowrap;
   }
   .trk-list li.active .name { font-weight: 700; }
-  .trk-list .init {
+
+  .trk-list input {
     flex: 0 0 auto;
-    width: 3.2rem;
+    width: 2.7rem;
     font: inherit;
     text-align: center;
     color: var(--bm-trk-fg);
@@ -80,16 +99,37 @@ const PANEL_CSS = `
     border-radius: 0.4rem;
     padding: 0.15rem 0.25rem;
   }
-  .trk-list .init:focus-visible { outline: 2px solid var(--bm-trk-accent); outline-offset: 1px; }
+  .trk-list input::placeholder { color: color-mix(in srgb, var(--bm-trk-muted) 65%, transparent); font-size: 0.85em; }
+  .trk-list input:focus-visible { outline: 2px solid var(--bm-trk-accent); outline-offset: 1px; }
+
+  .hp-wrap { display: inline-flex; align-items: baseline; gap: 0.15em; flex: 0 0 auto; }
+  .hp-max { color: var(--bm-trk-muted); font-size: 0.8em; font-variant-numeric: tabular-nums; }
+
+  .init-wrap { display: inline-flex; align-items: center; gap: 0.25em; flex: 0 0 auto; }
+  .init-wrap roll-dice { font-size: 0.78rem; }
+  roll-dice:not(:defined) { display: none; }
+
   .trk-empty { padding: 0.9rem; color: var(--bm-trk-muted); }
 `;
 
 const KIND_COLOR = { player: '#4a9e6f', monster: '#cf5a5a' };
 
+export const DEFAULT_LABELS = {
+  title: 'Initiative',
+  round: 'Round',
+  next: 'Next',
+  reset: 'Reset',
+  empty: 'No tokens on the battle mat yet.',
+  hp: 'HP',
+  ac: 'AC',
+  init: 'Init',
+};
+
 // Build the tracker UI inside `container` (the widget's panel element, in the
 // host element's shadow root). Returns { dispose } — unsubscribes and empties
-// the container.
-export function buildTracker(container, { storageKey = DEFAULT_KEY } = {}) {
+// the container. `labels` overrides DEFAULT_LABELS (localization).
+export function buildTracker(container, { storageKey = DEFAULT_KEY, labels = {} } = {}) {
+  const L = { ...DEFAULT_LABELS, ...labels };
   const store = getStore(storageKey);
   const root = container.getRootNode();
   if (!root.querySelector('style[data-trk]')) {
@@ -100,18 +140,18 @@ export function buildTracker(container, { storageKey = DEFAULT_KEY } = {}) {
   }
 
   const head = el('div', 'trk-head');
-  head.appendChild(el('span', null, 'Initiative'));
+  head.appendChild(el('span', null, L.title));
   const round = el('span', 'round');
-  const nextBtn = el('button', 'next', 'Next');
+  const nextBtn = el('button', 'next', L.next);
   nextBtn.type = 'button';
-  nextBtn.setAttribute('aria-label', 'Next turn');
+  nextBtn.setAttribute('aria-label', L.next);
   nextBtn.addEventListener('click', () => {
     nextTurn(store.doc);
     store.commit();
   });
-  const resetBtn = el('button', null, 'Reset');
+  const resetBtn = el('button', null, L.reset);
   resetBtn.type = 'button';
-  resetBtn.setAttribute('aria-label', 'Reset combat to round one');
+  resetBtn.setAttribute('aria-label', L.reset);
   resetBtn.addEventListener('click', () => {
     resetCombat(store.doc);
     store.commit();
@@ -119,20 +159,23 @@ export function buildTracker(container, { storageKey = DEFAULT_KEY } = {}) {
   head.append(round, nextBtn, resetBtn);
 
   const list = el('ol', 'trk-list');
-  list.setAttribute('aria-label', 'Turn order');
-  const empty = el('div', 'trk-empty', 'No tokens on the battle mat yet.');
+  list.setAttribute('aria-label', L.title);
+  const empty = el('div', 'trk-empty', L.empty);
   container.append(head, list, empty);
+
+  const FIELD_SET = { init: setInitiative, hp: setHp, ac: setAc };
 
   function render() {
     const doc = store.doc;
     const combat = getExt(doc).combat;
-    round.textContent = `Round ${combat.round}`;
+    round.textContent = `${L.round} ${combat.round}`;
 
     // Rebuilding the list destroys the focused input, throwing focus out of
-    // the panel mid data entry (type an initiative, Tab to the next field —
-    // the commit re-sorts and rebuilds). Remember which combatant's input
-    // had focus and restore it onto the rebuilt row.
+    // the panel mid data entry (type a value, Tab to the next field — the
+    // commit re-sorts and rebuilds). Remember which combatant's input had
+    // focus and restore it onto the rebuilt row.
     const focusedId = root.activeElement?.dataset?.nodeId ?? null;
+    const focusedField = root.activeElement?.dataset?.field ?? null;
 
     const order = turnOrder(doc);
     empty.hidden = order.length > 0;
@@ -145,36 +188,65 @@ export function buildTracker(container, { storageKey = DEFAULT_KEY } = {}) {
         ? resolveColor(node.color)
         : KIND_COLOR[node[EXT].tokenKind] ?? KIND_COLOR.player;
       const name = el('span', 'name', node[EXT].name || 'Token');
-      const init = el('input', 'init');
-      init.type = 'number';
-      init.dataset.nodeId = node.id;
-      init.setAttribute('aria-label', `Initiative for ${node[EXT].name || 'token'}`);
-      init.value = getInitiative(node) ?? '';
-      init.addEventListener('change', () => {
-        setInitiative(store.doc, node.id, init.value);
+      name.title = node[EXT].name || '';
+
+      const input = (field, value, label) => {
+        const inp = el('input');
+        inp.type = 'number';
+        inp.dataset.nodeId = node.id;
+        inp.dataset.field = field;
+        inp.placeholder = label;
+        inp.setAttribute('aria-label', `${label}: ${node[EXT].name || 'token'}`);
+        inp.value = value ?? '';
+        inp.addEventListener('change', () => {
+          FIELD_SET[field](store.doc, node.id, inp.value);
+          store.commit();
+          // The subscriber skips renders while a row input is focused (this
+          // one still has focus while `change` fires), so re-sort explicitly —
+          // but only after the browser finishes moving focus: a synchronous
+          // rebuild here would destroy the input a Tab press is about to land
+          // on, throwing focus out of the panel. Deferred, render() sees the
+          // real destination and restores focus onto the rebuilt row.
+          setTimeout(render, 0);
+        });
+        return inp;
+      };
+
+      const hpWrap = el('span', 'hp-wrap');
+      hpWrap.appendChild(input('hp', getHp(node), L.hp));
+      const max = getHpMax(node);
+      if (max !== null) hpWrap.appendChild(el('span', 'hp-max', `/${max}`));
+
+      const initWrap = el('span', 'init-wrap');
+      // the roll chip only materializes when the page loaded <roll-dice>;
+      // an undefined element is display:none'd by the panel CSS either way
+      const mod = getInitMod(node);
+      const chip = document.createElement('roll-dice');
+      chip.setAttribute('compact', '');
+      chip.textContent = mod ? `1d20${mod > 0 ? '+' : ''}${mod}` : '1d20';
+      chip.addEventListener('roll', (e) => {
+        setInitiative(store.doc, node.id, e.detail.total);
         store.commit();
-        // The subscriber skips renders while an init input is focused (this
-        // one still has focus while `change` fires), so re-sort explicitly —
-        // but only after the browser finishes moving focus: a synchronous
-        // rebuild here would destroy the input a Tab press is about to land
-        // on, throwing focus out of the panel. Deferred, render() sees the
-        // real destination and restores focus onto the rebuilt row.
         setTimeout(render, 0);
       });
-      row.append(dot, name, init);
+      initWrap.append(chip, input('init', getInitiative(node), L.init));
+
+      row.append(dot, name, hpWrap, input('ac', getAc(node), L.ac), initWrap);
       list.appendChild(row);
     }
-    if (focusedId !== null) {
-      const input = list.querySelector(`.init[data-node-id="${CSS.escape(focusedId)}"]`);
+    if (focusedId !== null && focusedField !== null) {
+      const inp = list.querySelector(
+        `input[data-node-id="${CSS.escape(focusedId)}"][data-field="${CSS.escape(focusedField)}"]`,
+      );
       // select(), matching what tabbing into an input does natively
-      input?.focus();
-      input?.select();
+      inp?.focus();
+      inp?.select();
     }
   }
 
   // Any change — this panel, the mat, another tab — redraws the list, except
-  // while an initiative input has focus (a mid-typing mat autosave in another
-  // component must not eat the keystrokes; the input commits on change).
+  // while a row input has focus (a mid-typing mat autosave in another
+  // component must not eat the keystrokes; inputs commit on change).
   // Deferred, because our own commits arrive mid focus transition (Tab fires
   // `change` while focus is between elements, so the guard reads null): a
   // synchronous rebuild would remove the focused input without a blur and
@@ -183,7 +255,7 @@ export function buildTracker(container, { storageKey = DEFAULT_KEY } = {}) {
   const unsubscribe = store.subscribe((e) => {
     if (e.type !== 'change') return;
     setTimeout(() => {
-      if (root.activeElement?.classList?.contains('init')) return;
+      if (root.activeElement?.dataset?.field) return;
       render();
     }, 0);
   });

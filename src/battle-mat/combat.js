@@ -13,19 +13,52 @@ export function combatants(doc) {
   return doc.nodes.filter((n) => nodeKind(n) === 'token');
 }
 
-export function getInitiative(node) {
-  const v = node[EXT]?.initiative;
+// Numeric combat fields live on the token's extension; a cleared input ('')
+// must clear the field, not become Number('') === 0.
+function getField(node, prop) {
+  const v = node[EXT]?.[prop];
   return Number.isFinite(v) ? v : null;
 }
 
-export function setInitiative(doc, id, value) {
+function setField(doc, id, prop, value) {
   const node = getNode(doc, id);
   if (!node || nodeKind(node) !== 'token') return false;
-  // '' (a cleared input) must clear, not become Number('') === 0
   const v = value === '' || value === null || value === undefined ? NaN : Number(value);
-  if (Number.isFinite(v)) node[EXT].initiative = v;
-  else delete node[EXT].initiative;
+  if (Number.isFinite(v)) node[EXT][prop] = v;
+  else delete node[EXT][prop];
   return true;
+}
+
+export function getInitiative(node) {
+  return getField(node, 'initiative');
+}
+
+export function setInitiative(doc, id, value) {
+  return setField(doc, id, 'initiative', value);
+}
+
+export function getHp(node) {
+  return getField(node, 'hp');
+}
+
+export function getHpMax(node) {
+  return getField(node, 'hpMax');
+}
+
+export function setHp(doc, id, value) {
+  return setField(doc, id, 'hp', value);
+}
+
+export function getAc(node) {
+  return getField(node, 'ac');
+}
+
+export function setAc(doc, id, value) {
+  return setField(doc, id, 'ac', value);
+}
+
+export function getInitMod(node) {
+  return getField(node, 'initMod');
 }
 
 // Turn order: initiative descending; combatants without an initiative sink to

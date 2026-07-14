@@ -91,7 +91,14 @@ export function resolveColor(color, fallback = '#8a94ab') {
 
 const round = (n) => Math.round(n);
 
-export function makeToken({ x, y, size = 64, url, name = '', source = 'roster', tokenKind = 'player', color }) {
+// D&D size word → how many grid cells a token spans per side.
+export const SIZE_CELLS = { tiny: 1, small: 1, medium: 1, large: 2, huge: 3, gargantuan: 4 };
+
+export function cellsForSize(size) {
+  return SIZE_CELLS[typeof size === 'string' ? size.toLowerCase() : ''] ?? 1;
+}
+
+export function makeToken({ x, y, size = 64, url, name = '', source = 'roster', tokenKind = 'player', color, hp, hpMax, ac, initMod }) {
   const node = {
     id: newId(),
     type: 'link',
@@ -102,6 +109,11 @@ export function makeToken({ x, y, size = 64, url, name = '', source = 'roster', 
     url,
     [EXT]: { kind: 'token', name, source, tokenKind },
   };
+  // combat stats ride on the token so the initiative tracker can show them;
+  // absent fields stay absent (registry icons have no stats)
+  for (const [key, v] of Object.entries({ hp, hpMax, ac, initMod })) {
+    if (Number.isFinite(v)) node[EXT][key] = v;
+  }
   if (color) node.color = color;
   return node;
 }

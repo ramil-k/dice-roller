@@ -4,6 +4,12 @@ import {
   combatants,
   getInitiative,
   setInitiative,
+  getHp,
+  getHpMax,
+  setHp,
+  getAc,
+  setAc,
+  getInitMod,
   turnOrder,
   nextTurn,
   resetCombat,
@@ -102,6 +108,42 @@ describe('resetCombat', () => {
     const combat = getExt(doc).combat;
     expect(combat).toEqual({ round: 1, activeNodeId: null });
     expect(getInitiative(a)).toBe(20);
+  });
+});
+
+describe('combat stats (hp / ac / initMod)', () => {
+  it('makeToken stores provided stats and skips absent ones', () => {
+    const doc = emptyDoc();
+    const t = addNode(doc, makeToken({ x: 0, y: 0, url: 'u', name: 'W', hp: 11, hpMax: 11, ac: 13, initMod: -1 }));
+    const bare = addNode(doc, makeToken({ x: 0, y: 0, url: 'u', name: 'B' }));
+    expect(getHp(t)).toBe(11);
+    expect(getHpMax(t)).toBe(11);
+    expect(getAc(t)).toBe(13);
+    expect(getInitMod(t)).toBe(-1);
+    expect(getHp(bare)).toBeNull();
+    expect(getAc(bare)).toBeNull();
+    expect(getInitMod(bare)).toBeNull();
+    expect('hp' in bare[EXT]).toBe(false);
+  });
+
+  it('setHp / setAc round-trip and a cleared input clears, not zeroes', () => {
+    const { doc, a } = encounter();
+    expect(setHp(doc, a.id, '7')).toBe(true);
+    expect(getHp(a)).toBe(7);
+    setHp(doc, a.id, '');
+    expect(getHp(a)).toBeNull();
+    expect('hp' in a[EXT]).toBe(false);
+    setAc(doc, a.id, 15);
+    expect(getAc(a)).toBe(15);
+    setAc(doc, a.id, null);
+    expect(getAc(a)).toBeNull();
+  });
+
+  it('setters reject non-tokens and unknown ids', () => {
+    const { doc } = encounter();
+    const stroke = doc.nodes.find((n) => n[EXT]?.kind === 'stroke');
+    expect(setHp(doc, stroke.id, 5)).toBe(false);
+    expect(setAc(doc, 'missing', 5)).toBe(false);
   });
 });
 
