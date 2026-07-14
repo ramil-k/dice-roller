@@ -240,14 +240,21 @@ To browse it or add a category, use the scraper `scripts/chikin-catalog.mjs`,
 which parses the icon index into `{ category, path, ru, en, name }` records:
 
 ```sh
-node scripts/chikin-catalog.mjs --list                 # categories + counts
+node scripts/chikin-catalog.mjs --list                 # source folders + counts
 node scripts/chikin-catalog.mjs --grep сундук          # find icons (RU or EN caption)
 node scripts/chikin-catalog.mjs --category 170-weapon --registry Weapons
                                                         # paste-ready CATEGORIES block
+node scripts/chikin-catalog.mjs --auto --counts        # auto-group into game themes
+node scripts/chikin-catalog.mjs --auto-registry        # paste-ready blocks for all themes
 ```
 
-Verify a new category renders (the pack has no machine-readable index, so paths
-are only as good as the scrape) before committing.
+`--auto` keyword-classifies the whole pack into game themes (Weapons, Armor,
+Monsters, Undead, Treasure, Magic, Dungeon, Animals, Humanoids) by matching
+Russian roots and English words in the captions — tune the `THEMES` term lists
+in the script. It is assisted curation, not exact: ambiguous captions ("скрипичный
+ключ" the clef lands under Dungeon via "ключ"), so **review and prune the
+generated block before committing** — and verify it renders (the pack has no
+machine-readable index, so paths are only as good as the scrape).
 
 ### Theming
 
