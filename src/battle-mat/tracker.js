@@ -25,6 +25,7 @@ import {
   getInitMod,
   nextTurn,
   resetCombat,
+  removeCombatant,
 } from './combat.js';
 
 const PANEL_CSS = `
@@ -110,6 +111,22 @@ const PANEL_CSS = `
   .init-wrap roll-dice { font-size: 0.78rem; }
   roll-dice:not(:defined) { display: none; }
 
+  .trk-remove {
+    flex: 0 0 auto;
+    width: 1.4rem;
+    height: 1.4rem;
+    padding: 0;
+    border: none;
+    border-radius: 0.3rem;
+    background: transparent;
+    color: var(--bm-trk-muted);
+    font-size: 1.1rem;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .trk-remove:hover { color: var(--bm-trk-accent); background: color-mix(in srgb, var(--bm-trk-accent) 14%, transparent); }
+  .trk-remove:focus-visible { outline: 2px solid var(--bm-trk-accent); outline-offset: 1px; }
+
   .trk-empty { padding: 0.9rem; color: var(--bm-trk-muted); }
 `;
 
@@ -124,6 +141,7 @@ export const DEFAULT_LABELS = {
   hp: 'HP',
   ac: 'AC',
   init: 'Init',
+  remove: 'Remove from battle',
 };
 
 // Build the tracker UI inside `container` (the widget's panel element, in the
@@ -232,7 +250,17 @@ export function buildTracker(container, { storageKey = DEFAULT_KEY, labels = {} 
       });
       initWrap.append(chip, input('init', getInitiative(node), L.init));
 
-      row.append(dot, name, hpWrap, input('ac', getAc(node), L.ac), initWrap);
+      const remove = el('button', 'trk-remove', '×');
+      remove.type = 'button';
+      remove.setAttribute('aria-label', `${L.remove}: ${node[EXT].name || 'token'}`);
+      remove.title = L.remove;
+      remove.addEventListener('click', () => {
+        removeCombatant(store.doc, node.id);
+        store.commit();
+        render();
+      });
+
+      row.append(dot, name, hpWrap, input('ac', getAc(node), L.ac), initWrap, remove);
       list.appendChild(row);
     }
     if (focusedId !== null && focusedField !== null) {

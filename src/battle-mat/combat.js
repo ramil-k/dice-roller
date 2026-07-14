@@ -7,7 +7,7 @@
 //
 // DOM-free; covered by test/battle-mat-combat.test.js.
 
-import { EXT, getExt, nodeKind, getNode, addNode, makeToken, cellsForSize } from './canvas-doc.js';
+import { EXT, getExt, nodeKind, getNode, addNode, removeNode, makeToken, cellsForSize } from './canvas-doc.js';
 
 export function combatants(doc) {
   return doc.nodes.filter((n) => nodeKind(n) === 'token');
@@ -180,4 +180,13 @@ export function resetCombat(doc) {
   const combat = getExt(doc).combat;
   combat.round = 1;
   combat.activeNodeId = null;
+}
+
+// Remove a combatant token entirely (from the tracker and the map). If it was
+// the active combatant, clear the turn pointer so it doesn't dangle — nextTurn
+// then resumes from the top of the order.
+export function removeCombatant(doc, id) {
+  const combat = getExt(doc).combat;
+  if (combat.activeNodeId === id) combat.activeNodeId = null;
+  return removeNode(doc, id);
 }

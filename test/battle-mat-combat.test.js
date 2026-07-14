@@ -16,6 +16,7 @@ import {
   turnOrder,
   nextTurn,
   resetCombat,
+  removeCombatant,
 } from '../src/battle-mat/combat.js';
 
 function encounter() {
@@ -208,6 +209,31 @@ describe('addCombatant', () => {
     expect(countOfType(doc, 'Wolf', 'monster')).toBe(2);
     expect(countOfType(doc, 'Wolf', 'player')).toBe(1);
     expect(countOfType(doc, 'Bear', 'monster')).toBe(0);
+  });
+});
+
+describe('removeCombatant', () => {
+  it('removes a token from the encounter', () => {
+    const { doc, a } = encounter();
+    expect(removeCombatant(doc, a.id)).toBe(true);
+    expect(combatants(doc).some((n) => n.id === a.id)).toBe(false);
+  });
+
+  it('clears the turn pointer when the active combatant is removed', () => {
+    const { doc, a } = encounter();
+    setInitiative(doc, a.id, 20);
+    nextTurn(doc); // a becomes active
+    expect(getExt(doc).combat.activeNodeId).toBe(a.id);
+    removeCombatant(doc, a.id);
+    expect(getExt(doc).combat.activeNodeId).toBeNull();
+  });
+
+  it('leaves the turn pointer alone when removing a non-active combatant', () => {
+    const { doc, a, b } = encounter();
+    setInitiative(doc, a.id, 20);
+    nextTurn(doc); // a active
+    removeCombatant(doc, b.id);
+    expect(getExt(doc).combat.activeNodeId).toBe(a.id);
   });
 });
 
