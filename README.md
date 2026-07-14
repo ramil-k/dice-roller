@@ -235,6 +235,20 @@ not bundled or redistributed with this package. They are free to use, but
 unreachable, those tabs show empty avatars; roster tokens are unaffected.
 Maps you export reference the icons by URL and never inline them.
 
+The categories in `src/battle-mat/registry.js` are hand-picked from the pack.
+To browse it or add a category, use the scraper `scripts/chikin-catalog.mjs`,
+which parses the icon index into `{ category, path, ru, en, name }` records:
+
+```sh
+node scripts/chikin-catalog.mjs --list                 # categories + counts
+node scripts/chikin-catalog.mjs --grep сундук          # find icons (RU or EN caption)
+node scripts/chikin-catalog.mjs --category 170-weapon --registry Weapons
+                                                        # paste-ready CATEGORIES block
+```
+
+Verify a new category renders (the pack has no machine-readable index, so paths
+are only as good as the scrape) before committing.
+
 ### Theming
 
 Set the `--bm-*` custom properties on `battle-mat` (button: `--bm-fab-bg`,
