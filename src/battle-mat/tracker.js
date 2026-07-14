@@ -24,7 +24,7 @@ import {
   setAc,
   getInitMod,
   nextTurn,
-  resetCombat,
+  clearCombat,
   removeCombatant,
   renameCombatant,
 } from './combat.js';
@@ -148,6 +148,7 @@ export const DEFAULT_LABELS = {
   next: 'Next',
   reset: 'Reset',
   empty: 'No tokens on the battle mat yet.',
+  resetConfirm: 'Remove all combatants and end the fight?',
   name: 'Name',
   hp: 'HP',
   ac: 'AC',
@@ -183,8 +184,12 @@ export function buildTracker(container, { storageKey = DEFAULT_KEY, labels = {} 
   resetBtn.type = 'button';
   resetBtn.setAttribute('aria-label', L.reset);
   resetBtn.addEventListener('click', () => {
-    resetCombat(store.doc);
+    // Reset ends the fight: it clears every combatant from the encounter (and
+    // the map), so confirm before wiping the roster.
+    if (turnOrder(store.doc).length && !window.confirm(L.resetConfirm)) return;
+    clearCombat(store.doc);
     store.commit();
+    setTimeout(render, 0);
   });
   head.append(round, nextBtn, resetBtn);
 

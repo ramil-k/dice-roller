@@ -305,7 +305,7 @@ import '@ramilkos/roll-dice/initiative-tracker';
 | Attribute     | Values                                                 | Default             |
 | ------------- | ------------------------------------------------------ | ------------------- |
 | `storage-key` | must match the paired `<battle-mat>`                   | `battle-mat-canvas` |
-| `label-*`     | localized UI strings: `label-title`, `label-round`, `label-next`, `label-reset`, `label-empty`, `label-name`, `label-hp`, `label-ac`, `label-init`, `label-remove` | English |
+| `label-*`     | localized UI strings: `label-title`, `label-round`, `label-next`, `label-reset`, `label-resetconfirm`, `label-empty`, `label-name`, `label-hp`, `label-ac`, `label-init`, `label-remove` | English |
 
 The widget is a normal in-flow element; its panel opens below the toggle
 button by default — see [Positioning](#positioning-the-widgets).
@@ -317,8 +317,10 @@ was placed with hit points), AC, and initiative, plus a button to remove the
 combatant from the battle. When the page has the `<roll-dice>` component loaded,
 each row also gets a compact `1d20±mod` chip (the modifier comes from the
 token's `initMod`) that fills the initiative in. **Next** advances the turn and
-increments the round on wrap; **Reset** returns to round 1 keeping the rolled
-initiatives. Player and monster rows are color-coded like their token rings.
+increments the round on wrap; **Reset** ends the fight — it removes every
+combatant (placed and reserve) from the encounter and the map after a confirm,
+and returns to round 1. Player and monster rows are color-coded like their token
+rings.
 
 Initiative lives on each token node (`x-battleMat.initiative`) and the round /
 active combatant in the document's `combat` extension (see the format above),

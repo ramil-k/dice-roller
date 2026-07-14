@@ -16,6 +16,7 @@ import {
   turnOrder,
   nextTurn,
   resetCombat,
+  clearCombat,
   removeCombatant,
   isPlaced,
   reserveCombatants,
@@ -241,6 +242,33 @@ describe('removeCombatant', () => {
     nextTurn(doc); // a active
     removeCombatant(doc, b.id);
     expect(getExt(doc).combat.activeNodeId).toBe(a.id);
+  });
+});
+
+describe('clearCombat', () => {
+  it('removes every combatant (placed and reserve) and resets the round', () => {
+    const { doc, a } = encounter();
+    // add a reserve combatant too
+    addCombatant(doc, { name: 'Extra', kind: 'monster' });
+    setInitiative(doc, a.id, 20);
+    nextTurn(doc); // someone active, round state dirtied
+    const removed = clearCombat(doc);
+    expect(removed).toBe(4); // 3 from encounter() + 1 reserve
+    expect(combatants(doc)).toHaveLength(0);
+    expect(reserveCombatants(doc)).toHaveLength(0);
+    const combat = getExt(doc).combat;
+    expect(combat).toEqual({ round: 1, activeNodeId: null });
+  });
+
+  it('leaves non-combatant nodes (drawings) untouched', () => {
+    const { doc } = encounter();
+    clearCombat(doc);
+    // the pen stroke from encounter() survives
+    expect(doc.nodes.some((n) => n[EXT]?.kind === 'stroke')).toBe(true);
+  });
+
+  it('returns 0 on an empty encounter', () => {
+    expect(clearCombat(emptyDoc())).toBe(0);
   });
 });
 

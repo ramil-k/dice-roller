@@ -227,3 +227,16 @@ export function removeCombatant(doc, id) {
   if (combat.activeNodeId === id) combat.activeNodeId = null;
   return removeNode(doc, id);
 }
+
+// End the fight: drop every combatant (placed and reserve alike) from the
+// encounter and reset the round counter and active pointer. Drawings, attached
+// images and grid/viewport are left untouched — only the combat is cleared.
+// Returns how many combatants were removed.
+export function clearCombat(doc) {
+  const ids = combatants(doc).map((n) => n.id);
+  for (const id of ids) removeNode(doc, id);
+  const combat = getExt(doc).combat;
+  combat.round = 1;
+  combat.activeNodeId = null;
+  return ids.length;
+}
