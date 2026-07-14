@@ -17,8 +17,9 @@
 // Attributes:
 //   storage-key  localStorage key of the encounter, must match the
 //                <battle-mat> it pairs with (default "battle-mat-canvas")
-//   label-title, label-round, label-next, label-reset, label-resetconfirm,
-//   label-empty, label-name, label-hp, label-ac, label-init, label-remove
+//   label-title, label-round, label-next, label-fill, label-reset,
+//   label-resetconfirm, label-empty, label-name, label-hp, label-ac,
+//   label-init, label-remove
 //                localized UI strings (defaults are English; see
 //                DEFAULT_LABELS in battle-mat/tracker.js)
 
@@ -192,7 +193,7 @@ export class InitiativeTracker extends HTMLElement {
       note.remove();
       // label-* attributes override the English defaults (localization)
       const labels = {};
-      for (const key of ['title', 'round', 'next', 'reset', 'resetConfirm', 'empty', 'name', 'hp', 'ac', 'init', 'remove']) {
+      for (const key of ['title', 'round', 'next', 'fill', 'reset', 'resetConfirm', 'empty', 'name', 'hp', 'ac', 'init', 'remove']) {
         const v = this.getAttribute(`label-${key}`);
         if (v !== null) labels[key] = v;
       }

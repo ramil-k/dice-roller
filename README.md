@@ -150,9 +150,11 @@ cell — one token per combatant, carrying its name, size, stats and any rolled
 initiative. Placing a combatant drops it from Reserve.
 
 The **Party** and **Foes** tabs come from the page-provided `roster` array,
-followed by the built-in icon categories (Humanoids, Animals, Monsters). Unlike
-Reserve, placing from these tabs mints a *new* token each time — `roster` is for
-ad-hoc extra tokens.
+followed by the built-in icon categories (Humanoids, Animals, Monsters, Items —
+chests, keys, potions, scrolls, gems and other set dressing). Unlike Reserve,
+placing from these tabs mints a *new* token each time — `roster` is for ad-hoc
+extra tokens. Placing a duplicate of a type already on the map gives it a random
+adjective ("Reckless Wolf"), the same as `<add-to-battle>`.
 
 Roster entries are `{ name, image, kind, size, hp, ac, initMod }` — `kind` is
 `"player"` or `"monster"`, everything after it optional. `size` is a D&D size
@@ -224,7 +226,7 @@ suggests using **Export**.
 
 ### Built-in token icons
 
-The Humanoids / Animals / Monsters pool tabs use
+The Humanoids / Animals / Monsters / Items pool tabs use
 [Chikin Icons](https://sergeychikin.ru/365/) — an icon pack drawn by Sergey
 Chikin (sergeychikin.ru). The icons are hot-linked from his site at runtime,
 not bundled or redistributed with this package. They are free to use, but
@@ -277,7 +279,8 @@ creature already in the encounter (synced across tabs). The element itself is
 eager and tiny; the encounter store chunk loads on the first click.
 
 The adjective set is a static property — override it once per page to
-localize:
+localize. The list is shared with the battle mat, so tokens dropped straight
+onto the map from a pool tab get adjectived from the same set:
 
 ```js
 import { AddToBattle } from '@ramilkos/roll-dice/add-to-battle';
@@ -305,7 +308,7 @@ import '@ramilkos/roll-dice/initiative-tracker';
 | Attribute     | Values                                                 | Default             |
 | ------------- | ------------------------------------------------------ | ------------------- |
 | `storage-key` | must match the paired `<battle-mat>`                   | `battle-mat-canvas` |
-| `label-*`     | localized UI strings: `label-title`, `label-round`, `label-next`, `label-reset`, `label-resetconfirm`, `label-empty`, `label-name`, `label-hp`, `label-ac`, `label-init`, `label-remove` | English |
+| `label-*`     | localized UI strings: `label-title`, `label-round`, `label-next`, `label-fill`, `label-reset`, `label-resetconfirm`, `label-empty`, `label-name`, `label-hp`, `label-ac`, `label-init`, `label-remove` | English |
 
 The widget is a normal in-flow element; its panel opens below the toggle
 button by default — see [Positioning](#positioning-the-widgets).
@@ -316,11 +319,12 @@ row has an editable name field, editable HP (with a `/max` hint when the token
 was placed with hit points), AC, and initiative, plus a button to remove the
 combatant from the battle. When the page has the `<roll-dice>` component loaded,
 each row also gets a compact `1d20±mod` chip (the modifier comes from the
-token's `initMod`) that fills the initiative in. **Next** advances the turn and
-increments the round on wrap; **Reset** ends the fight — it removes every
-combatant (placed and reserve) from the encounter and the map after a confirm,
-and returns to round 1. Player and monster rows are color-coded like their token
-rings.
+token's `initMod`) that fills the initiative in. **Fill initiative** rolls a
+d20 (plus each combatant's `initMod`) for everyone who has no initiative yet,
+leaving already-rolled values alone. **Next** advances the turn and increments
+the round on wrap; **Reset** ends the fight — it removes every combatant
+(placed and reserve) from the encounter and the map after a confirm, and returns
+to round 1. Player and monster rows are color-coded like their token rings.
 
 Initiative lives on each token node (`x-battleMat.initiative`) and the round /
 active combatant in the document's `combat` extension (see the format above),

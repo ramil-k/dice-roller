@@ -23,6 +23,7 @@ import {
   getAc,
   setAc,
   getInitMod,
+  rollMissingInitiative,
   nextTurn,
   clearCombat,
   removeCombatant,
@@ -146,6 +147,7 @@ export const DEFAULT_LABELS = {
   title: 'Initiative',
   round: 'Round',
   next: 'Next',
+  fill: 'Fill initiative',
   reset: 'Reset',
   empty: 'No tokens on the battle mat yet.',
   resetConfirm: 'Remove all combatants and end the fight?',
@@ -180,6 +182,15 @@ export function buildTracker(container, { storageKey = DEFAULT_KEY, labels = {} 
     nextTurn(store.doc);
     store.commit();
   });
+  const fillBtn = el('button', null, L.fill);
+  fillBtn.type = 'button';
+  fillBtn.setAttribute('aria-label', L.fill);
+  fillBtn.title = L.fill;
+  fillBtn.addEventListener('click', () => {
+    if (!rollMissingInitiative(store.doc)) return; // nobody was missing one
+    store.commit();
+    setTimeout(render, 0);
+  });
   const resetBtn = el('button', null, L.reset);
   resetBtn.type = 'button';
   resetBtn.setAttribute('aria-label', L.reset);
@@ -191,7 +202,7 @@ export function buildTracker(container, { storageKey = DEFAULT_KEY, labels = {} 
     store.commit();
     setTimeout(render, 0);
   });
-  head.append(round, nextBtn, resetBtn);
+  head.append(round, fillBtn, nextBtn, resetBtn);
 
   const list = el('ol', 'trk-list');
   list.setAttribute('aria-label', L.title);

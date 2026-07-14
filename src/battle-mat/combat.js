@@ -46,10 +46,31 @@ export function reserveCombatants(doc) {
   return combatants(doc).filter((n) => !isPlaced(n));
 }
 
+// Work out the display name for a new instance of `baseName`/`tokenKind`,
+// looking at the combatants already in `doc`. The first instance keeps the
+// plain base name; the second and later ones get a random unused adjective
+// ("Reckless Wolf"), falling back to a numeric suffix once the adjective list
+// (or the absence of one) runs dry. Returns { displayName, adjective } —
+// `adjective` is null when none was applied. Shared by add-to-battle
+// (addCombatant) and dropping a token straight onto the mat, so both name
+// duplicates the same way. `rand` is injectable for deterministic tests.
+export function instanceName(doc, baseName, tokenKind = 'player', { adjectives = [], rand = Math.random } = {}) {
+  const kind = tokenKind === 'monster' ? 'monster' : 'player';
+  const siblings = combatants(doc).filter(
+    (n) => baseNameOf(n) === baseName && (n[EXT].tokenKind ?? 'player') === kind,
+  );
+  if (!siblings.length) return { displayName: baseName, adjective: null };
+  const used = new Set(siblings.map((n) => n[EXT].adjective).filter(Boolean));
+  const free = adjectives.filter((a) => !used.has(a));
+  if (free.length) {
+    const adjective = free[Math.floor(rand() * free.length)];
+    return { displayName: `${adjective} ${baseName}`, adjective };
+  }
+  return { displayName: `${baseName} ${siblings.length + 1}`, adjective: null };
+}
+
 // Add one combatant to the encounter as an (unplaced) token node, and return
-// it. The first instance of a type keeps the plain name; the second and later
-// ones get a random unused adjective ("Reckless Wolf"), falling back to a
-// numeric suffix once the adjective list (or the absence of one) runs dry.
+// it. Naming follows instanceName (first plain, later ones get an adjective).
 // The combatant shows up in the tracker immediately and in the mat's Reserve
 // pool; it is NOT drawn on the map until placed. Combat stats and size ride
 // along.
@@ -62,22 +83,7 @@ export function addCombatant(
 ) {
   const baseName = name;
   const tokenKind = kind === 'monster' ? 'monster' : 'player';
-  const siblings = combatants(doc).filter(
-    (n) => baseNameOf(n) === baseName && (n[EXT].tokenKind ?? 'player') === tokenKind,
-  );
-
-  let displayName = baseName;
-  let adjective = null;
-  if (siblings.length) {
-    const used = new Set(siblings.map((n) => n[EXT].adjective).filter(Boolean));
-    const free = adjectives.filter((a) => !used.has(a));
-    if (free.length) {
-      adjective = free[Math.floor(rand() * free.length)];
-      displayName = `${adjective} ${baseName}`;
-    } else {
-      displayName = `${baseName} ${siblings.length + 1}`;
-    }
-  }
+  const { displayName, adjective } = instanceName(doc, baseName, tokenKind, { adjectives, rand });
 
   const span = cellSize * cellsForSize(size);
   const token = makeToken({
@@ -172,6 +178,21 @@ export function setAc(doc, id, value) {
 
 export function getInitMod(node) {
   return getField(node, 'initMod');
+}
+
+// Roll a d20 initiative for every combatant that has none yet, adding each
+// one's initMod (a placed token keeps its already-rolled value). Returns how
+// many were filled in. `rand` is injectable for deterministic tests
+// (defaults to Math.random); a d20 is floor(rand()*20)+1.
+export function rollMissingInitiative(doc, { rand = Math.random } = {}) {
+  let filled = 0;
+  for (const node of combatants(doc)) {
+    if (getInitiative(node) !== null) continue;
+    const d20 = Math.floor(rand() * 20) + 1;
+    setInitiative(doc, node.id, d20 + (getInitMod(node) ?? 0));
+    filled += 1;
+  }
+  return filled;
 }
 
 // Turn order: initiative descending; combatants without an initiative sink to

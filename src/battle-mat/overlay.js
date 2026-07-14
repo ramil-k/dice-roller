@@ -24,7 +24,8 @@ import {
 } from './canvas-doc.js';
 import { clampCellSize, snapTokenOrigin } from './grid.js';
 import { getStore, DEFAULT_KEY } from './store.js';
-import { reserveCombatants, placeCombatant } from './combat.js';
+import { reserveCombatants, placeCombatant, instanceName } from './combat.js';
+import { getAdjectives } from './adjectives.js';
 import { CATEGORIES, iconUrl } from './registry.js';
 import { buildScene, render, applyViewport, updateGrid } from './view.js';
 import { attachTools } from './tools.js';
@@ -711,22 +712,28 @@ class BattleMatOverlay {
     let x = wx - size / 2;
     let y = wy - size / 2;
     if (grid.snap) ({ x, y } = snapTokenOrigin(x, y, size, grid));
-    addNode(
-      this.store.doc,
-      makeToken({
-        x,
-        y,
-        size,
-        url: entry.image,
-        name: entry.name,
-        source: entry.source,
-        tokenKind: entry.kind,
-        hp: entry.hp,
-        hpMax: entry.hp,
-        ac: entry.ac,
-        initMod: entry.initMod,
-      }),
-    );
+    // Name duplicates like add-to-battle does: the first Wolf on the map is
+    // "Wolf", the next gets a random adjective ("Reckless Wolf"). baseName is
+    // kept so the next drop can tell they are the same type.
+    const { displayName, adjective } = instanceName(this.store.doc, entry.name, entry.kind, {
+      adjectives: getAdjectives(),
+    });
+    const token = makeToken({
+      x,
+      y,
+      size,
+      url: entry.image,
+      name: displayName,
+      source: entry.source,
+      tokenKind: entry.kind,
+      hp: entry.hp,
+      hpMax: entry.hp,
+      ac: entry.ac,
+      initMod: entry.initMod,
+    });
+    token[EXT].baseName = entry.name;
+    if (adjective) token[EXT].adjective = adjective;
+    addNode(this.store.doc, token);
     this._commit();
   }
 

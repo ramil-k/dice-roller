@@ -36,21 +36,10 @@
 //
 // A normal in-flow element. Theming via --bm-atb-* custom properties.
 
+import { getAdjectives, setAdjectives } from './battle-mat/adjectives.js';
+
 const DEFAULT_STORAGE_KEY = 'battle-mat-canvas';
 const EXT = 'x-battleMat';
-
-const DEFAULT_ADJECTIVES = [
-  'Reckless', 'Fearless', 'Cowardly', 'Sneaky', 'Grumpy', 'Jolly', 'Sleepy', 'Rabid', 'Lazy', 'Hungry',
-  'Furious', 'Timid', 'Cunning', 'Clumsy', 'Nimble', 'Sturdy', 'Scrawny', 'Burly', 'Shaggy', 'Mangy',
-  'One-eyed', 'Toothless', 'Scarred', 'Limping', 'Growling', 'Howling', 'Silent', 'Screeching', 'Drooling', 'Smelly',
-  'Ancient', 'Young', 'Elder', 'Feral', 'Tame', 'Wild', 'Frenzied', 'Calm', 'Nervous', 'Bold',
-  'Crafty', 'Dim', 'Wise', 'Mad', 'Cheerful', 'Gloomy', 'Sullen', 'Proud', 'Humble', 'Vain',
-  'Greedy', 'Generous', 'Spiteful', 'Kind', 'Cruel', 'Gentle', 'Savage', 'Noble', 'Lowly', 'Regal',
-  'Swift', 'Sluggish', 'Restless', 'Weary', 'Vigilant', 'Oblivious', 'Curious', 'Wary', 'Trusting', 'Paranoid',
-  'Lucky', 'Unlucky', 'Cursed', 'Blessed', 'Haunted', 'Radiant', 'Shadowy', 'Pale', 'Ruddy', 'Ashen',
-  'Frostbitten', 'Scorched', 'Soggy', 'Dusty', 'Muddy', 'Bloody', 'Ragged', 'Dapper', 'Shiny', 'Rusty',
-  'Whistling', 'Humming', 'Snoring', 'Hiccuping', 'Sniffling', 'Twitchy', 'Stoic', 'Dramatic', 'Bashful', 'Smug',
-];
 
 const CSS = `
   :host {
@@ -156,8 +145,15 @@ function countInEncounter(key, baseName, kind, storage = globalThis.localStorage
 }
 
 export class AddToBattle extends HTMLElement {
-  // Override once per page to localize instance adjectives.
-  static adjectives = DEFAULT_ADJECTIVES;
+  // Override once per page to localize instance adjectives. Backed by the
+  // shared adjectives module so the battle-mat overlay names duplicate tokens
+  // (dropped straight onto the map) with the same list.
+  static get adjectives() {
+    return getAdjectives();
+  }
+  static set adjectives(list) {
+    setAdjectives(list);
+  }
 
   get storageKey() {
     return this.getAttribute('storage-key') ?? DEFAULT_STORAGE_KEY;

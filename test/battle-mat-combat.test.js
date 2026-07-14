@@ -10,6 +10,8 @@ import {
   getAc,
   setAc,
   getInitMod,
+  rollMissingInitiative,
+  instanceName,
   baseNameOf,
   countOfType,
   addCombatant,
@@ -242,6 +244,68 @@ describe('removeCombatant', () => {
     nextTurn(doc); // a active
     removeCombatant(doc, b.id);
     expect(getExt(doc).combat.activeNodeId).toBe(a.id);
+  });
+});
+
+describe('instanceName', () => {
+  const ADJ = ['Reckless', 'Sly'];
+  const first = () => 0;
+
+  it('first instance is the plain base name, no adjective', () => {
+    const doc = emptyDoc();
+    expect(instanceName(doc, 'Wolf', 'monster', { adjectives: ADJ, rand: first })).toEqual({
+      displayName: 'Wolf',
+      adjective: null,
+    });
+  });
+
+  it('later instances get an unused adjective, then numeric fallback', () => {
+    const doc = emptyDoc();
+    addCombatant(doc, { name: 'Wolf', kind: 'monster' }, { adjectives: ADJ, rand: first }); // Wolf
+    expect(instanceName(doc, 'Wolf', 'monster', { adjectives: ADJ, rand: first }).displayName).toBe('Reckless Wolf');
+    addCombatant(doc, { name: 'Wolf', kind: 'monster' }, { adjectives: ADJ, rand: first }); // Reckless Wolf
+    expect(instanceName(doc, 'Wolf', 'monster', { adjectives: ADJ, rand: first }).displayName).toBe('Sly Wolf');
+    addCombatant(doc, { name: 'Wolf', kind: 'monster' }, { adjectives: ADJ, rand: first }); // Sly Wolf
+    // adjectives exhausted -> numeric
+    expect(instanceName(doc, 'Wolf', 'monster', { adjectives: ADJ, rand: first }).displayName).toBe('Wolf 4');
+  });
+
+  it('counts only the same base name and kind', () => {
+    const doc = emptyDoc();
+    addCombatant(doc, { name: 'Wolf', kind: 'player' }, { adjectives: ADJ, rand: first });
+    // a monster Wolf is a different type -> still the first of its kind
+    expect(instanceName(doc, 'Wolf', 'monster', { adjectives: ADJ, rand: first }).displayName).toBe('Wolf');
+  });
+});
+
+describe('rollMissingInitiative', () => {
+  it('fills only combatants without an initiative, adding their initMod', () => {
+    const doc = emptyDoc();
+    const a = addCombatant(doc, { name: 'A', kind: 'player', initMod: 3 });
+    const b = addCombatant(doc, { name: 'B', kind: 'player' });
+    const c = addCombatant(doc, { name: 'C', kind: 'player', initMod: -1 });
+    setInitiative(doc, b.id, 99); // already has one -> untouched
+    const rand = () => 0; // d20 = floor(0*20)+1 = 1
+    const filled = rollMissingInitiative(doc, { rand });
+    expect(filled).toBe(2);
+    expect(getInitiative(a)).toBe(1 + 3); // 4
+    expect(getInitiative(b)).toBe(99); // preserved
+    expect(getInitiative(c)).toBe(1 + -1); // 0
+  });
+
+  it('returns 0 when everyone already has an initiative', () => {
+    const doc = emptyDoc();
+    const a = addCombatant(doc, { name: 'A', kind: 'player' });
+    setInitiative(doc, a.id, 12);
+    expect(rollMissingInitiative(doc, { rand: () => 0.5 })).toBe(0);
+    expect(getInitiative(a)).toBe(12);
+  });
+
+  it('rolls a d20 in [1,20] plus modifier', () => {
+    const doc = emptyDoc();
+    const a = addCombatant(doc, { name: 'A', kind: 'player', initMod: 0 });
+    rollMissingInitiative(doc, { rand: () => 0.999 }); // floor(19.98)+1 = 20
+    expect(getInitiative(a)).toBe(20);
   });
 });
 
