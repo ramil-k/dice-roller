@@ -24,6 +24,7 @@ import {
 } from './canvas-doc.js';
 import { clampCellSize, snapTokenOrigin } from './grid.js';
 import { getStore, DEFAULT_KEY } from './store.js';
+import { reserveCombatants, placeCombatant } from './combat.js';
 import { CATEGORIES, iconUrl } from './registry.js';
 import { buildScene, render, applyViewport, updateGrid } from './view.js';
 import { attachTools } from './tools.js';
@@ -454,9 +455,9 @@ class BattleMatOverlay {
 
   // ---- token pool ----------------------------------------------------------
 
-  // Tabs: page-provided `roster` Party / Foes first, then the built-in
-  // registry categories. (Content pages add combatants straight to the
-  // encounter via <add-to-battle>; this pool is for ad-hoc extra tokens.)
+  // Tabs: the encounter's Reserve (combatants added via <add-to-battle> but
+  // not yet dropped on the map) first, then the page-provided `roster` Party /
+  // Foes, then the built-in registry categories.
   _poolTabs() {
     const entry = (t, source) => ({
       name: t.name ?? 'Token',
@@ -469,6 +470,16 @@ class BattleMatOverlay {
       source,
     });
     const tabs = [];
+    // Reserve — place these existing combatants onto the map (poolId = node id)
+    const reserve = reserveCombatants(this.store.doc).map((n) => ({
+      name: n[EXT].name ?? 'Token',
+      image: n.url,
+      kind: n[EXT].tokenKind ?? 'player',
+      source: 'reserve',
+      poolId: n.id,
+    }));
+    if (reserve.length) tabs.push({ id: 'reserve', label: 'Reserve', entries: reserve });
+
     const players = this.roster.filter((t) => t.kind !== 'monster');
     const monsters = this.roster.filter((t) => t.kind === 'monster');
     if (players.length) tabs.push({ id: 'party', label: 'Party', entries: players.map((t) => entry(t, 'roster')) });
@@ -497,10 +508,11 @@ class BattleMatOverlay {
 
     const data = this._poolTabs();
     const select = (id) => {
+      this._poolTab = id;
       for (const btn of tabs.children) btn.setAttribute('aria-selected', String(btn.dataset.tab === id));
       const tab = data.find((t) => t.id === id);
       avatars.replaceChildren();
-      for (const tokenEntry of tab.entries) {
+      for (const tokenEntry of (tab?.entries ?? [])) {
         avatars.appendChild(this._buildAvatar(tokenEntry));
       }
     };
@@ -514,8 +526,21 @@ class BattleMatOverlay {
       tabs.appendChild(btn);
     }
     pool.append(tabs, avatars);
-    if (data.length) select(data[0].id);
+    // keep the current tab across rebuilds when it survives (e.g. Reserve
+    // shrinks as tokens are placed but is still non-empty)
+    const initial = data.find((t) => t.id === this._poolTab) ?? data[0];
+    if (initial) select(initial.id);
+    this._poolEl = pool;
     return pool;
+  }
+
+  // The Reserve tab reflects encounter state; rebuild the pool in place when
+  // the document changes (a combatant added on the page, placed, or removed).
+  _rebuildPool() {
+    if (!this._poolEl?.isConnected) return;
+    const next = this._buildPool();
+    const prev = this._rootEl.querySelector('.pool');
+    if (prev && prev !== next) prev.replaceWith(next);
   }
 
   _buildAvatar(entry) {
@@ -669,6 +694,18 @@ class BattleMatOverlay {
 
   _placeToken(entry, wx, wy) {
     const grid = getExt(this.store.doc).grid;
+    if (entry.poolId) {
+      // Reserve entry: move the existing combatant node onto the map instead
+      // of creating a new one (it already has stats, size, name, initiative).
+      const node = this.store.doc.nodes.find((n) => n.id === entry.poolId);
+      const span = node?.width || grid.cellSize;
+      let x = wx - span / 2;
+      let y = wy - span / 2;
+      if (grid.snap) ({ x, y } = snapTokenOrigin(x, y, span, grid));
+      placeCombatant(this.store.doc, entry.poolId, x, y);
+      this._commit();
+      return;
+    }
     // creature size → footprint in grid cells (large 2×2, huge 3×3, ...)
     const size = grid.cellSize * cellsForSize(entry.size);
     let x = wx - size / 2;
@@ -718,8 +755,10 @@ class BattleMatOverlay {
       this._reportSave(e.ok);
     } else if (e.full) {
       this._syncFromDoc();
+      this._rebuildPool();
     } else {
       render(this.refs, this.store.doc);
+      this._rebuildPool();
     }
   }
 

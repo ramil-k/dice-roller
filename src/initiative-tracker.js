@@ -18,7 +18,7 @@
 //   storage-key  localStorage key of the encounter, must match the
 //                <battle-mat> it pairs with (default "battle-mat-canvas")
 //   label-title, label-round, label-next, label-reset, label-empty,
-//   label-hp, label-ac, label-init, label-remove
+//   label-name, label-hp, label-ac, label-init, label-remove
 //                localized UI strings (defaults are English; see
 //                DEFAULT_LABELS in battle-mat/tracker.js)
 
@@ -91,13 +91,12 @@ const TRACKER_CSS = `
   .loading { padding: 0.9rem; color: var(--bm-trk-muted); }
 `;
 
-// A d20 with a "1st" flag: turn order marker.
+// Crossed swords — Sergey Chikin's 170-weapon/weapon glyph
+// (https://sergeychikin.ru/365/170-weapon/weapon.svg), the same icon the old
+// site tracker used. Filled with currentColor so it themes with the button.
 const TRACKER_ICON = `
-  <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-       stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-    <path d="M4 5.5h10M4 9.5h10M4 13.5h10"/>
-    <path d="M4 18.5h16"/>
-    <path d="M17.5 4.5v9M17.5 4.5l2.5 2"/>
+  <svg class="icon" viewBox="0 0 150 190" fill="currentColor" aria-hidden="true">
+    <path fill-rule="evenodd" d="M120.12,145c-6.1,6.36-15.55-.75-13.75-7.35l-10.89-9.13-14,7-2.94-4.74,6.32-6.48-9.25-9.17-8.46,8.49,3.27,5.81C62.19,137.62,51.88,132,51.88,132L41.41,141.2l1.48,3c-9.23,9.08-21-3-12-11.89l2.9,1.33L43,123.06s-5.13-11.38,2.31-18.7L51,107.68l8.92-8.09L35.27,75.19l-1.7-15,15.11.62L74.84,86.06,99.5,63.7l17-2.7L114,76.72l-23.91,24,9.22,8.89,5.31-5.44,4.88,3-6.67,12.69,10,11.91C119.65,130.34,125.77,139.11,120.12,145ZM107.63,76.18l3.21-9.49L101,69.47S60.59,108,56,112.19s2.34,11.87,7.53,6.91S107.63,76.18,107.63,76.18Z"/>
   </svg>
 `;
 
@@ -193,7 +192,7 @@ export class InitiativeTracker extends HTMLElement {
       note.remove();
       // label-* attributes override the English defaults (localization)
       const labels = {};
-      for (const key of ['title', 'round', 'next', 'reset', 'empty', 'hp', 'ac', 'init', 'remove']) {
+      for (const key of ['title', 'round', 'next', 'reset', 'empty', 'name', 'hp', 'ac', 'init', 'remove']) {
         const v = this.getAttribute(`label-${key}`);
         if (v !== null) labels[key] = v;
       }

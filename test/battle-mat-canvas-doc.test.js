@@ -27,7 +27,7 @@ describe('emptyDoc', () => {
     expect(doc.edges).toEqual([]);
     expect(doc[EXT].version).toBe(1);
     expect(doc[EXT].grid.cellSize).toBe(64);
-    expect(doc[EXT].viewport).toEqual({ x: 0, y: 0, zoom: 1 });
+    expect(doc[EXT].viewport).toEqual({ x: 0, y: 0, zoom: 0.5 });
   });
 });
 

@@ -29,12 +29,30 @@ export function countOfType(doc, baseName, kind = 'player') {
   ).length;
 }
 
-// Add one combatant to the encounter as a token node, and return it. The
-// first instance of a type keeps the plain name; the second and later ones
-// get a random unused adjective ("Reckless Wolf"), falling back to a numeric
-// suffix once the adjective list (or the absence of one) runs dry. New tokens
-// are stacked near the top-left of the map with a small per-instance offset so
-// the DM can fan them out; combat stats and size ride along.
+// A combatant is "placed" once it has a token on the map; before that it
+// lives only in the tracker and in the mat's Reserve pool. New combatants
+// (add-to-battle) start unplaced; placeCombatant flips the flag and sets the
+// map coordinates. `cellsForSize`-derived width is kept from the start so the
+// pool avatar and the eventual token agree on footprint.
+// A token is "in reserve" only when it is *explicitly* unplaced
+// (placed === false). Tokens created directly on the mat, and any imported /
+// legacy token, have no `placed` flag and count as placed — they already have
+// map coordinates and render on the map (view.js skips only placed === false).
+export function isPlaced(node) {
+  return node[EXT]?.placed !== false;
+}
+
+export function reserveCombatants(doc) {
+  return combatants(doc).filter((n) => !isPlaced(n));
+}
+
+// Add one combatant to the encounter as an (unplaced) token node, and return
+// it. The first instance of a type keeps the plain name; the second and later
+// ones get a random unused adjective ("Reckless Wolf"), falling back to a
+// numeric suffix once the adjective list (or the absence of one) runs dry.
+// The combatant shows up in the tracker immediately and in the mat's Reserve
+// pool; it is NOT drawn on the map until placed. Combat stats and size ride
+// along.
 //
 // `rand` is injectable for deterministic tests (defaults to Math.random).
 export function addCombatant(
@@ -62,16 +80,9 @@ export function addCombatant(
   }
 
   const span = cellSize * cellsForSize(size);
-  // stack new arrivals down-right from the corner, one grid step per existing
-  // token, wrapping so a big encounter doesn't march off the bottom
-  const n = combatants(doc).length;
-  const perRow = 8;
-  const x = cellSize + (n % perRow) * cellSize;
-  const y = cellSize + Math.floor(n / perRow) * cellSize;
-
   const token = makeToken({
-    x,
-    y,
+    x: 0,
+    y: 0,
     size: span,
     url: image,
     name: displayName,
@@ -82,11 +93,37 @@ export function addCombatant(
     ac: ac == null ? undefined : Number(ac),
     initMod: initMod == null ? undefined : Number(initMod),
   });
-  // remember what we need to keep instance naming stable across later adds
+  // remember what we need to keep instance naming stable across later adds;
+  // `placed: false` keeps it in the tracker + Reserve pool but off the map
   token[EXT].baseName = baseName;
+  token[EXT].placed = false;
   if (adjective) token[EXT].adjective = adjective;
   addNode(doc, token);
   return token;
+}
+
+// Put an existing (reserve) combatant onto the map at a world point.
+export function placeCombatant(doc, id, x, y) {
+  const node = getNode(doc, id);
+  if (!node || nodeKind(node) !== 'token') return false;
+  node.x = Math.round(x);
+  node.y = Math.round(y);
+  node[EXT].placed = true;
+  return true;
+}
+
+// Rename a combatant. The typed name becomes the display name; the base name
+// (used for instance grouping / the add-to-battle badge) follows it, and any
+// auto adjective is dropped since the DM has taken over naming.
+export function renameCombatant(doc, id, name) {
+  const node = getNode(doc, id);
+  if (!node || nodeKind(node) !== 'token') return false;
+  const trimmed = String(name).trim();
+  if (!trimmed) return false;
+  node[EXT].name = trimmed;
+  node[EXT].baseName = trimmed;
+  delete node[EXT].adjective;
+  return true;
 }
 
 // Numeric combat fields live on the token's extension; a cleared input ('')

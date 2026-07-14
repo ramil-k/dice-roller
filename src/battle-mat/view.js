@@ -179,8 +179,11 @@ export function render(refs, doc) {
   refs.tokens.replaceChildren();
 
   for (const node of doc.nodes) {
-    const g = svgEl('g', { 'data-id': node.id, transform: `translate(${node.x} ${node.y})` });
     const kind = nodeKind(node);
+    // reserve combatants (added to the fight but not yet dropped on the map)
+    // live only in the tracker and the mat's Reserve pool — skip them here
+    if (kind === 'token' && node[EXT]?.placed === false) continue;
+    const g = svgEl('g', { 'data-id': node.id, transform: `translate(${node.x} ${node.y})` });
     if (kind === 'token') {
       g.classList.add('token');
       g.append(...renderToken(node));

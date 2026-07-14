@@ -26,6 +26,7 @@ import {
   nextTurn,
   resetCombat,
   removeCombatant,
+  renameCombatant,
 } from './combat.js';
 
 const PANEL_CSS = `
@@ -81,14 +82,7 @@ const PANEL_CSS = `
     height: 0.6em;
     border-radius: 50%;
   }
-  .trk-list .name {
-    flex: 1 1 12rem;
-    min-width: 6rem;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .trk-list li.active .name { font-weight: 700; }
+  .trk-list li.active input.name { font-weight: 700; }
 
   .trk-list input {
     flex: 0 0 auto;
@@ -100,6 +94,22 @@ const PANEL_CSS = `
     border: 1px solid var(--bm-trk-edge);
     border-radius: 0.4rem;
     padding: 0.15rem 0.25rem;
+  }
+  /* the name field reads as plain text (transparent chrome, left-aligned, wide)
+     and only reveals its edit affordance on hover/focus */
+  .trk-list input.name {
+    flex: 1 1 12rem;
+    min-width: 6rem;
+    width: auto;
+    text-align: left;
+    text-overflow: ellipsis;
+    background: transparent;
+    border-color: transparent;
+  }
+  .trk-list input.name:hover { background: color-mix(in srgb, var(--bm-trk-fg) 7%, transparent); }
+  .trk-list input.name:focus {
+    background: color-mix(in srgb, var(--bm-trk-fg) 7%, transparent);
+    border-color: var(--bm-trk-edge);
   }
   .trk-list input::placeholder { color: color-mix(in srgb, var(--bm-trk-muted) 65%, transparent); font-size: 0.85em; }
   .trk-list input:focus-visible { outline: 2px solid var(--bm-trk-accent); outline-offset: 1px; }
@@ -138,6 +148,7 @@ export const DEFAULT_LABELS = {
   next: 'Next',
   reset: 'Reset',
   empty: 'No tokens on the battle mat yet.',
+  name: 'Name',
   hp: 'HP',
   ac: 'AC',
   init: 'Init',
@@ -206,8 +217,20 @@ export function buildTracker(container, { storageKey = DEFAULT_KEY, labels = {} 
       dot.style.background = node.color
         ? resolveColor(node.color)
         : KIND_COLOR[node[EXT].tokenKind] ?? KIND_COLOR.player;
-      const name = el('span', 'name', node[EXT].name || 'Token');
+
+      // editable name — a text input styled to read as plain text until focused
+      const name = el('input', 'name');
+      name.type = 'text';
+      name.value = node[EXT].name || '';
+      name.dataset.nodeId = node.id;
+      name.dataset.field = 'name';
+      name.setAttribute('aria-label', `${L.name}: ${node[EXT].name || 'token'}`);
       name.title = node[EXT].name || '';
+      name.addEventListener('change', () => {
+        renameCombatant(store.doc, node.id, name.value);
+        store.commit();
+        setTimeout(render, 0);
+      });
 
       const input = (field, value, label) => {
         const inp = el('input');

@@ -17,6 +17,10 @@ import {
   nextTurn,
   resetCombat,
   removeCombatant,
+  isPlaced,
+  reserveCombatants,
+  placeCombatant,
+  renameCombatant,
 } from '../src/battle-mat/combat.js';
 
 function encounter() {
@@ -173,6 +177,9 @@ describe('addCombatant', () => {
     expect(getAc(t)).toBe(13);
     expect(getInitMod(t)).toBe(2);
     expect(combatants(doc)).toHaveLength(1);
+    // new combatants start off the map (tracker + Reserve pool only)
+    expect(isPlaced(t)).toBe(false);
+    expect(t[EXT].placed).toBe(false);
   });
 
   it('first instance is plain, later ones get an unused adjective', () => {
@@ -234,6 +241,73 @@ describe('removeCombatant', () => {
     nextTurn(doc); // a active
     removeCombatant(doc, b.id);
     expect(getExt(doc).combat.activeNodeId).toBe(a.id);
+  });
+});
+
+describe('reserve / placed model', () => {
+  it('addCombatant leaves the token unplaced and in the reserve', () => {
+    const doc = emptyDoc();
+    const t = addCombatant(doc, { name: 'Wolf', kind: 'monster' });
+    expect(isPlaced(t)).toBe(false);
+    expect(reserveCombatants(doc)).toHaveLength(1);
+    expect(reserveCombatants(doc)[0].id).toBe(t.id);
+  });
+
+  it('placeCombatant flips the flag, sets rounded coords, and drops it from the reserve', () => {
+    const doc = emptyDoc();
+    const t = addCombatant(doc, { name: 'Wolf', kind: 'monster' });
+    expect(placeCombatant(doc, t.id, 63.4, 128.6)).toBe(true);
+    expect(isPlaced(t)).toBe(true);
+    expect(t.x).toBe(63);
+    expect(t.y).toBe(129);
+    expect(reserveCombatants(doc)).toHaveLength(0);
+    // a placed combatant is still a combatant (shows in the tracker)
+    expect(combatants(doc)).toHaveLength(1);
+  });
+
+  it('placeCombatant rejects non-tokens and unknown ids', () => {
+    const { doc } = encounter();
+    const stroke = doc.nodes.find((n) => n[EXT]?.kind === 'stroke');
+    expect(placeCombatant(doc, stroke.id, 0, 0)).toBe(false);
+    expect(placeCombatant(doc, 'missing', 0, 0)).toBe(false);
+  });
+
+  it('isPlaced treats a legacy token (no placed flag) as placed', () => {
+    const doc = emptyDoc();
+    // tokens created directly on the mat have no `placed` flag — they are on it
+    const t = addNode(doc, makeToken({ x: 0, y: 0, url: 'u', name: 'Direct' }));
+    expect(isPlaced(t)).toBe(true);
+    expect(reserveCombatants(doc)).toHaveLength(0);
+  });
+});
+
+describe('renameCombatant', () => {
+  it('sets name and base name and drops the auto adjective', () => {
+    const doc = emptyDoc();
+    const a = addCombatant(doc, { name: 'Wolf', kind: 'monster' }, { adjectives: ['Reckless'], rand: () => 0 });
+    const b = addCombatant(doc, { name: 'Wolf', kind: 'monster' }, { adjectives: ['Reckless'], rand: () => 0 });
+    expect(b[EXT].name).toBe('Reckless Wolf');
+    expect(renameCombatant(doc, b.id, '  Alpha  ')).toBe(true);
+    expect(b[EXT].name).toBe('Alpha');
+    expect(b[EXT].baseName).toBe('Alpha');
+    expect('adjective' in b[EXT]).toBe(false);
+    // renaming freed the "Reckless" grouping — a new Wolf is plain again? No:
+    // base names diverged, so the original Wolf stands alone
+    expect(countOfType(doc, 'Wolf', 'monster')).toBe(1);
+  });
+
+  it('rejects an empty or whitespace name (keeps the old name)', () => {
+    const doc = emptyDoc();
+    const a = addCombatant(doc, { name: 'Wolf', kind: 'monster' });
+    expect(renameCombatant(doc, a.id, '   ')).toBe(false);
+    expect(a[EXT].name).toBe('Wolf');
+  });
+
+  it('rejects non-tokens and unknown ids', () => {
+    const { doc } = encounter();
+    const stroke = doc.nodes.find((n) => n[EXT]?.kind === 'stroke');
+    expect(renameCombatant(doc, stroke.id, 'X')).toBe(false);
+    expect(renameCombatant(doc, 'missing', 'X')).toBe(false);
   });
 });
 

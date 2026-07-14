@@ -37,7 +37,9 @@ export const DEFAULT_GRID = {
   feetPerCell: 5,
 };
 
-export const DEFAULT_VIEWPORT = { x: 0, y: 0, zoom: 1 };
+// zoom 0.5 = the map starts twice as zoomed-out, so more of the grid and more
+// tokens are visible at a glance (the DM zooms in as needed)
+export const DEFAULT_VIEWPORT = { x: 0, y: 0, zoom: 0.5 };
 
 // Combat state for the initiative tracker. Turn order is *computed* from the
 // tokens' initiative values (see combat.js), so only the round counter and

@@ -142,11 +142,17 @@ resolves relative to the entry file. Bundlers handle the split automatically.
 The button is a normal in-flow element — see
 [Positioning](#positioning-the-widgets) to float it in a corner.
 
-The **Party** and **Foes** tabs of the token pool come from the page-provided
-`roster` array, followed by the built-in icon categories (Humanoids, Animals,
-Monsters). Content pages usually add combatants straight to the encounter with
-[`<add-to-battle>`](#add-to-battle--add-a-combatant) instead — those appear as
-tokens on the map and rows in the tracker; `roster` is for ad-hoc extra tokens.
+The token pool's first tab is **Reserve**: combatants added to the encounter
+with [`<add-to-battle>`](#add-to-battle--add-a-combatant) that are not yet on
+the map. They show up as rows in the initiative tracker immediately but stay
+*off* the map until the DM drags (or click-to-places) one from Reserve onto a
+cell — one token per combatant, carrying its name, size, stats and any rolled
+initiative. Placing a combatant drops it from Reserve.
+
+The **Party** and **Foes** tabs come from the page-provided `roster` array,
+followed by the built-in icon categories (Humanoids, Animals, Monsters). Unlike
+Reserve, placing from these tabs mints a *new* token each time — `roster` is for
+ad-hoc extra tokens.
 
 Roster entries are `{ name, image, kind, size, hp, ac, initMod }` — `kind` is
 `"player"` or `"monster"`, everything after it optional. `size` is a D&D size
@@ -239,10 +245,11 @@ Set the `--bm-*` custom properties on `battle-mat` (button: `--bm-fab-bg`,
 An "add this creature to the battle" button for content pages (bestiary
 entries, character sheets, index cards). Every click adds one more combatant
 to the shared encounter — a token in the same document the mat and tracker use
-— so the creature shows up in the initiative tracker right away and on the map
-(new tokens stack near the corner for the DM to fan out). The second and later
-instances of a type get a random adjective ("Reckless Wolf") so they can be
-told apart.
+— so the creature shows up in the initiative tracker right away and in the
+mat's **Reserve** pool. It is *not* dropped on the map automatically: the DM
+places it from Reserve when it enters play (see the [pool](#tools)). The second
+and later instances of a type get a random adjective ("Reckless Wolf") so they
+can be told apart.
 
 ```html
 <add-to-battle name="Wolf" kind="monster" image="/wolf.jpg"
@@ -298,19 +305,20 @@ import '@ramilkos/roll-dice/initiative-tracker';
 | Attribute     | Values                                                 | Default             |
 | ------------- | ------------------------------------------------------ | ------------------- |
 | `storage-key` | must match the paired `<battle-mat>`                   | `battle-mat-canvas` |
-| `label-*`     | localized UI strings: `label-title`, `label-round`, `label-next`, `label-reset`, `label-empty`, `label-hp`, `label-ac`, `label-init` | English |
+| `label-*`     | localized UI strings: `label-title`, `label-round`, `label-next`, `label-reset`, `label-empty`, `label-name`, `label-hp`, `label-ac`, `label-init`, `label-remove` | English |
 
 The widget is a normal in-flow element; its panel opens below the toggle
 button by default — see [Positioning](#positioning-the-widgets).
 
 The panel lists combatants sorted by initiative (descending; unrolled ones
-last, ties by name). Each row shows editable HP (with a `/max` hint when the
-token was placed with hit points), AC, and initiative. When the page has the
-`<roll-dice>` component loaded, each row also gets a compact `1d20±mod` chip
-(the modifier comes from the token's `initMod`) that fills the initiative in.
-**Next** advances the turn and increments the round on wrap; **Reset** returns
-to round 1 keeping the rolled initiatives. Player and monster rows are
-color-coded like their token rings.
+last, ties by name), including ones still in Reserve (not yet on the map). Each
+row has an editable name field, editable HP (with a `/max` hint when the token
+was placed with hit points), AC, and initiative, plus a button to remove the
+combatant from the battle. When the page has the `<roll-dice>` component loaded,
+each row also gets a compact `1d20±mod` chip (the modifier comes from the
+token's `initMod`) that fills the initiative in. **Next** advances the turn and
+increments the round on wrap; **Reset** returns to round 1 keeping the rolled
+initiatives. Player and monster rows are color-coded like their token rings.
 
 Initiative lives on each token node (`x-battleMat.initiative`) and the round /
 active combatant in the document's `combat` extension (see the format above),
