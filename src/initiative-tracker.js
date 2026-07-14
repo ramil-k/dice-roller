@@ -39,6 +39,23 @@ const TRACKER_CSS = `
     color: var(--bm-trk-fg);
   }
 
+  /* While the panel is open the host is promoted to a top-layer popover so it
+     paints above the battle-mat overlay. Undo the popover UA styles (centered
+     inset, auto margins, border, padding, fit sizing) so the page's own
+     position:fixed pinning still applies. */
+  :host(:popover-open) {
+    inset: auto;
+    margin: 0;
+    border: 0;
+    padding: 0;
+    width: auto;
+    height: auto;
+    max-width: none;
+    max-height: none;
+    overflow: visible;
+    background: transparent;
+  }
+
   .toggle {
     display: inline-flex;
     align-items: center;
@@ -62,7 +79,7 @@ const TRACKER_CSS = `
   .panel {
     display: flex;
     flex-direction: column;
-    width: min(23rem, calc(100vw - 2.5rem));
+    width: min(32rem, calc(100vw - 2.5rem));
     max-height: min(24rem, 70vh);
     border: 1px solid var(--bm-trk-edge);
     border-radius: 0.7rem;
@@ -116,17 +133,52 @@ export class InitiativeTracker extends HTMLElement {
           this._toggle.focus();
         }
       });
+
+      // The battle mat mounts as a top-layer popover and would paint over us.
+      // When it opens while our panel is open, re-show ourselves so top-layer
+      // order (= show order) puts the tracker back on top.
+      this._onMatOpen = () => {
+        if (!this._panel.hidden) this._promote();
+      };
     }
+    window.addEventListener('battle-mat-open', this._onMatOpen);
   }
 
   disconnectedCallback() {
+    window.removeEventListener('battle-mat-open', this._onMatOpen);
     this._tracker?.dispose();
     this._tracker = null;
+  }
+
+  // Enter/refresh the top layer so the open panel floats above the battle mat.
+  // Re-showing an already-open popover is what lifts it back to the top.
+  _promote() {
+    if (!this.showPopover) return; // no Popover API: stays a fixed element
+    try {
+      if (this.matches(':popover-open')) this.hidePopover();
+      this.setAttribute('popover', 'manual');
+      this.showPopover();
+    } catch {
+      /* not connected / already handled */
+    }
+  }
+
+  _demote() {
+    if (this.showPopover && this.matches?.(':popover-open')) {
+      try {
+        this.hidePopover();
+      } catch {
+        /* already hidden */
+      }
+    }
+    this.removeAttribute('popover');
   }
 
   async _setOpen(open) {
     this._panel.hidden = !open;
     this._toggle.setAttribute('aria-expanded', String(open));
+    if (open) this._promote();
+    else this._demote();
     if (!open || this._tracker || this._loading) return;
 
     // First expand: load the panel implementation (shared with battle-mat).

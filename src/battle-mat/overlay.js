@@ -345,6 +345,12 @@ class BattleMatOverlay {
         /* already shown */
       }
     }
+    // Let a paired <initiative-tracker> lift itself back above us: top-layer
+    // order is show order, so a tracker shown before us would be hidden behind
+    // the mat until it re-shows. It listens for this and re-pops on top.
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('battle-mat-open', { detail: { key: this.storageKey } }));
+    }
   }
 
   // ---- shell ---------------------------------------------------------------

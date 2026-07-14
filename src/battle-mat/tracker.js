@@ -81,7 +81,8 @@ const PANEL_CSS = `
     border-radius: 50%;
   }
   .trk-list .name {
-    flex: 1 1 auto;
+    flex: 1 1 12rem;
+    min-width: 6rem;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
