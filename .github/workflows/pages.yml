@@ -30,8 +30,9 @@ jobs:
       - run: npm run build:demo  # demo site -> dist-demo/
       # Self-host the library bundle alongside the demo so it can be loaded via
       # a <script> tag straight from Pages (no npm needed). ES-only since the
-      # battle-mat split: all entries plus the lazy/shared battle-mat chunks.
-      - run: cp dist/roll-dice.js dist/battle-mat.js dist/initiative-tracker.js dist/add-to-battle.js dist/battle-mat-*.js dist-demo/
+      # battle-mat split: every entry plus the lazy/shared battle-mat chunks
+      # (a glob, so new entries like battle-toolbar.js ride along).
+      - run: cp dist/*.js dist-demo/
       - uses: actions/upload-pages-artifact@v5
         with:
           path: dist-demo
