@@ -42,7 +42,7 @@ const DOCK_CSS = `
     z-index: var(--bt-z, 1000);
     display: flex;
     flex-direction: column;
-    padding: 0.45rem;
+    padding: 0;
     /* flush to the corner: edges only where the dock meets the page,
        and a single rounded corner (top-left) */
     border: 1px solid var(--bt-edge);
