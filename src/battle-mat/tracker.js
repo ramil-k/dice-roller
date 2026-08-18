@@ -4,7 +4,8 @@
 // through it, so the mat and the tracker stay in sync in both directions,
 // including across tabs.
 //
-// Per row: kind-colored dot, name, editable HP (with /max hint), editable AC,
+// Per row: portrait thumbnail (kind-colored dot when the token has no image),
+// name, editable HP (with /max hint), editable AC,
 // editable initiative, and — when the page has the <roll-dice> component
 // loaded — a compact 1d20±mod roll chip that fills the initiative in.
 // Combat stats live on the token nodes (combat.js), so they ride along with
@@ -82,6 +83,16 @@ const PANEL_CSS = `
     width: 0.6em;
     height: 0.6em;
     border-radius: 50%;
+  }
+  /* light backdrop so registry glyph SVGs (dark strokes) stay visible */
+  .trk-list .avatar {
+    flex: 0 0 auto;
+    width: 1.7em;
+    height: 1.7em;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid var(--bm-trk-edge);
+    background: var(--bm-trk-fg);
   }
   .trk-list li.active input.name { font-weight: 700; }
 
@@ -229,10 +240,29 @@ export function buildTracker(container, { storageKey = DEFAULT_KEY, labels = {} 
     for (const node of order) {
       const row = el('li');
       row.classList.toggle('active', node.id === combat.activeNodeId);
-      const dot = el('span', 'dot');
-      dot.style.background = node.color
+      const kindColor = node.color
         ? resolveColor(node.color)
         : KIND_COLOR[node[EXT].tokenKind] ?? KIND_COLOR.player;
+      // portrait thumbnail when the token has an image, kind-colored dot otherwise
+      let marker;
+      if (node.url) {
+        marker = el('img', 'avatar');
+        marker.src = node.url;
+        marker.alt = '';
+        marker.style.borderColor = kindColor;
+        marker.addEventListener(
+          'error',
+          () => {
+            const dot = el('span', 'dot');
+            dot.style.background = kindColor;
+            marker.replaceWith(dot);
+          },
+          { once: true },
+        );
+      } else {
+        marker = el('span', 'dot');
+        marker.style.background = kindColor;
+      }
 
       // editable name — a text input styled to read as plain text until focused
       const name = el('input', 'name');
@@ -299,7 +329,7 @@ export function buildTracker(container, { storageKey = DEFAULT_KEY, labels = {} 
         render();
       });
 
-      row.append(dot, name, hpWrap, input('ac', getAc(node), L.ac), initWrap, remove);
+      row.append(marker, name, hpWrap, input('ac', getAc(node), L.ac), initWrap, remove);
       list.appendChild(row);
     }
     if (focusedId !== null && focusedField !== null) {
