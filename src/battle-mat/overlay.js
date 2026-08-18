@@ -1,11 +1,13 @@
 // The battle screen: a full-viewport top-layer surface laid out as a CSS grid
-//   "toolbar map"
-//   "toolbar pool"
-//   "toolbar tracker"
-// — a vertical toolbar column on the left whose buttons toggle the map, the
-// token pool and the initiative tracker areas (state persisted in the
-// battle-mat-ui localStorage key), plus a dice button that opens the roll-dice
-// builder overlay on top of everything and a close button back to the page.
+//   "map     toolbar"
+//   "pool    toolbar"
+//   "tracker toolbar"
+// — a vertical toolbar column on the right (the same corner as the page
+// dock): the map tools group at its top and, bottom-aligned, dock-style
+// buttons that toggle the map, the token pool and the initiative tracker
+// areas (state persisted in the battle-mat-ui localStorage key), plus a dice
+// button that opens the roll-dice builder overlay on top of everything and a
+// close button back to the page.
 // Mirrors the DiceOverlay architecture in roll-dice.js — a detached host
 // element with its own shadow root, promoted into the top layer via the
 // Popover API where available, with a fixed-position + max-z-index fallback
@@ -132,43 +134,48 @@ const OVERLAY_CSS = `
     background: transparent;
   }
 
-  /* The battle screen grid: toolbar column on the left, the map / pool /
-     tracker areas stacked on the right. Area visibility is toggled via
-     data-show-* attributes; with the map off, its 1fr row collapses and the
-     flexible space goes to the tracker. */
+  /* The battle screen grid: the map / pool / tracker areas stacked on the
+     left, the toolbar column on the right (same corner as the page dock).
+     Area visibility is toggled via data-show-* attributes; with the map off,
+     its 1fr row collapses and the flexible space goes to the tracker. */
   .mat-root {
     position: absolute;
     inset: 0;
     background: var(--bm-bg);
     animation: bm-fade 0.15s ease;
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr) auto auto;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: minmax(0, 1fr) max-content max-content;
     grid-template-areas:
-      "toolbar map"
-      "toolbar pool"
-      "toolbar tracker";
+      "map toolbar"
+      "pool toolbar"
+      "tracker toolbar";
   }
-  .mat-root:not([data-show-map]) { grid-template-rows: 0 auto minmax(0, 1fr); }
+  .mat-root:not([data-show-map]) { grid-template-rows: 0 max-content max-content; }
   .mat-root:not([data-show-map]) .map-area { display: none; }
   .mat-root:not([data-show-pool]) .pool { display: none; }
   .mat-root:not([data-show-tracker]) .tracker-area { display: none; }
   @keyframes bm-fade { from { opacity: 0; } }
 
-  /* --- screen toolbar (area toggles, dice, close) --------------------------- */
+  /* --- screen toolbar (area toggles, dice, close) ----------------------------
+     Styled like the <battle-toolbar> dock controls (same size, per-button
+     accents, no gaps) and bottom-aligned, so it reads as the dock's
+     continuation in the same corner. Pressed toggles show their accent;
+     unpressed ones go muted. */
   .screen-toolbar {
     grid-area: toolbar;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 0.35rem;
-    padding: 0.6rem 0.45rem;
+    padding: 0;
     background: var(--bm-surface);
-    border-right: 1px solid var(--bm-edge);
+    border-left: 1px solid var(--bm-edge);
     overflow-y: auto;
   }
+  /* the map tools sit at the top; the spacer pushes the dock-style controls
+     to the bottom of the column */
   .screen-toolbar .spacer { flex: 1; }
-  .screen-toolbar button {
+  .screen-toolbar > button {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -181,11 +188,16 @@ const OVERLAY_CSS = `
     background: transparent;
     color: var(--bm-muted);
     cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
   }
-  .screen-toolbar button:hover { color: var(--bm-fg); background: rgb(from var(--bm-fg) r g b / 0.08); }
-  .screen-toolbar button[aria-pressed="true"] { color: var(--bm-bg); background: var(--bm-accent); }
-  .screen-toolbar .icon { width: 1.5rem; height: 1.5rem; }
-  .screen-toolbar .divider { align-self: stretch; height: 1px; margin: 0.25rem 0.3rem; background: var(--bm-edge); }
+  .screen-toolbar > button:hover { background: rgb(from var(--bm-fg) r g b / 0.08); }
+  .screen-toolbar > .b-tracker { --tb-accent: #f4c430; }
+  .screen-toolbar > .b-map { --tb-accent: #5fb98d; }
+  .screen-toolbar > .b-pool { --tb-accent: #e0a94a; }
+  .screen-toolbar > button[aria-pressed="true"] { color: var(--tb-accent); }
+  .screen-toolbar > .b-dice { color: #7d97e8; }
+  .screen-toolbar > .b-close:hover { color: var(--bm-fg); }
+  .screen-toolbar > button .icon { width: 1.5rem; height: 1.5rem; }
 
   /* --- map area -------------------------------------------------------------- */
   .map-area { grid-area: map; position: relative; overflow: hidden; min-height: 0; }
@@ -243,7 +255,7 @@ const OVERLAY_CSS = `
     border-color: var(--bm-edge);
   }
   .pool .tab:focus-visible, .avatar:focus-visible, .tools button:focus-visible,
-  .swatch:focus-visible, .screen-toolbar button:focus-visible, .settings :focus-visible {
+  .swatch:focus-visible, .screen-toolbar > button:focus-visible, .settings :focus-visible {
     outline: 2px solid var(--bm-accent);
     outline-offset: 2px;
   }
@@ -276,29 +288,23 @@ const OVERLAY_CSS = `
   }
   .pool-ghost img { width: 100%; height: 100%; object-fit: contain; }
 
-  /* --- map tools (floating panel inside the map area) ----------------------- */
+  /* --- map tools (the top group of the screen toolbar column) ---------------
+     Slightly tighter than the dock controls below so the whole column fits a
+     laptop viewport without scrolling. */
   .tools {
-    position: absolute;
-    left: 0.75rem;
-    top: 50%;
-    transform: translateY(-50%);
     display: flex;
     flex-direction: column;
-    gap: 0.15rem;
-    background: var(--bm-surface);
-    border: 1px solid var(--bm-edge);
-    border-radius: 0.8rem;
-    box-shadow: 0 8px 24px rgb(0 0 0 / 0.35);
-    padding: 0.4rem;
-    max-height: calc(100% - 2rem);
-    overflow-y: auto;
+    align-items: center;
+    gap: 0.1rem;
+    padding: 0.3rem 0.35rem;
   }
+  .mat-root:not([data-show-map]) .tools { display: none; }
   .tools button {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 2.5rem;
-    height: 2.5rem;
+    width: 2.25rem;
+    height: 2.25rem;
     padding: 0;
     border: none;
     border-radius: 0.55rem;
@@ -311,7 +317,7 @@ const OVERLAY_CSS = `
     color: var(--bm-bg);
     background: var(--bm-accent);
   }
-  .tools .icon { width: 1.35rem; height: 1.35rem; }
+  .tools .icon { width: 1.2rem; height: 1.2rem; }
   .tools .divider { height: 1px; margin: 0.25rem 0.3rem; background: var(--bm-edge); }
   .swatches { display: grid; grid-template-columns: 1fr 1fr; gap: 0.3rem; padding: 0.15rem 0.45rem; }
   /* .tools button sets 2.5rem sizing; swatches need their own (specificity) */
@@ -328,9 +334,10 @@ const OVERLAY_CSS = `
   /* --- settings panel ------------------------------------------------------ */
   /* the display:grid below would defeat the hidden attribute without this */
   .settings[hidden] { display: none; }
+  /* opens beside the toolbar column, i.e. against the map's right edge */
   .settings {
     position: absolute;
-    left: 4.25rem;
+    right: 0.75rem;
     top: 50%;
     transform: translateY(-50%);
     display: grid;
@@ -377,18 +384,15 @@ const OVERLAY_CSS = `
   /* --- initiative tracker area ----------------------------------------------
      buildTracker (tracker.js) fills this with .trk-head / .trk-list /
      .trk-empty; its own injected CSS handles the contents, this rule only
-     shapes the grid area (bounded height with the map on, flexible without). */
+     shapes the grid area (max-content row: the tracker takes its natural
+     height and the map absorbs the rest). */
   .tracker-area {
     grid-area: tracker;
     display: flex;
     flex-direction: column;
-    min-height: 0;
-    max-height: 32vh;
-    overflow: hidden;
     background: var(--bm-surface);
     border-top: 1px solid var(--bm-edge);
   }
-  .mat-root:not([data-show-map]) .tracker-area { max-height: none; }
 `;
 
 class BattleMatOverlay {
@@ -476,11 +480,12 @@ class BattleMatOverlay {
     rootEl.setAttribute('aria-modal', 'true');
     rootEl.setAttribute('aria-label', 'Battle screen');
 
-    // Map area: the scene svg plus its floating chrome (tools, settings).
+    // Map area: the scene svg plus the grid-settings panel (the map tools
+    // live at the top of the screen toolbar column).
     const mapArea = el('div', 'map-area');
     this.svg = svgEl('svg', { class: 'mat' });
     this.refs = buildScene(this.svg);
-    mapArea.append(this.svg, this._buildToolbar(), this._buildSettings());
+    mapArea.append(this.svg, this._buildSettings());
 
     this._status = el('div', 'status');
     this._status.setAttribute('aria-live', 'polite');
@@ -501,8 +506,10 @@ class BattleMatOverlay {
     this._wireImageDrop();
   }
 
-  // The left toolbar column: area toggles (map, pool, tracker), the dice
-  // roller launcher, and — pushed to the bottom — the close button.
+  // The right toolbar column: the map tools group at the top, then —
+  // bottom-aligned like the page dock — the area toggles (tracker, map, pool:
+  // the dock's button order first), the dice roller launcher, and the close
+  // button at the very bottom.
   _buildScreenToolbar() {
     const L = { ...SCREEN_LABELS, ...this.labels };
     const bar = el('div', 'screen-toolbar');
@@ -510,14 +517,16 @@ class BattleMatOverlay {
     bar.setAttribute('aria-label', 'Battle screen');
     bar.setAttribute('aria-orientation', 'vertical');
 
+    bar.append(this._buildToolbar(), el('div', 'spacer'));
+
     this._screenButtons = new Map();
     const toggles = [
+      ['tracker', L.title], // the tracker's own panel title doubles as its name
       ['map', L.map],
       ['pool', L.pool],
-      ['tracker', L.title], // the tracker's own panel title doubles as its name
     ];
     for (const [area, label] of toggles) {
-      const btn = el('button');
+      const btn = el('button', `b-${area}`);
       btn.type = 'button';
       btn.setAttribute('aria-label', label);
       btn.title = label;
@@ -527,9 +536,7 @@ class BattleMatOverlay {
       bar.appendChild(btn);
     }
 
-    bar.appendChild(el('div', 'divider'));
-
-    const dice = el('button');
+    const dice = el('button', 'b-dice');
     dice.type = 'button';
     dice.setAttribute('aria-label', L.dice);
     dice.title = L.dice;
@@ -537,9 +544,7 @@ class BattleMatOverlay {
     dice.addEventListener('click', () => this._openDice(dice));
     bar.appendChild(dice);
 
-    bar.appendChild(el('div', 'spacer'));
-
-    const close = el('button');
+    const close = el('button', 'b-close');
     close.type = 'button';
     close.setAttribute('aria-label', L.close);
     close.title = L.close;

@@ -6,12 +6,14 @@
   bottom-right corner with initiative, battle map and dice buttons (the
   recommended page-level entry point; localizable via `label-*`).
 - The battle-mat overlay became the **battle screen**: a full-viewport CSS
-  grid with a toolbar column on the left and the map, the token pool and the
-  embedded initiative tracker stacked on the right. The toolbar buttons toggle
-  the areas (persisted per device in the new `battle-mat-ui` localStorage
-  key), a d20 button opens the dice roller on top, and the close button moved
-  to the bottom of the column. `openBattleMat()` gained `labels` and `show`
-  options; the pool moved from a floating card to a full-width row.
+  grid with the map, the token pool and the embedded initiative tracker
+  stacked on the left (pool and tracker rows at their natural height) and a
+  toolbar column on the right — the map tools group at its top and, aligned
+  to the bottom like the page dock, dock-style controls: area toggles
+  (persisted per device in the new `battle-mat-ui` localStorage key), a d20
+  button that opens the dice roller on top, and the close button at the very
+  bottom. `openBattleMat()` gained `labels` and `show` options; the pool
+  moved from a floating card to a full-width row.
 - The dice overlay now moves focus into itself on open, so a document-level
   Escape/Tab is handled by the topmost surface only (Escape over the battle
   screen closes just the dice).

@@ -24,11 +24,17 @@ export const ICONS = {
   upload: wrap('<path d="M12 15V4M7.5 8L12 3.5 16.5 8M5 19.5h14"/>'),
   trash: wrap('<path d="M4.5 6.5h15M9.5 6V4.5h5V6M7 6.5l1 13h8l1-13M10.3 10v6M13.7 10v6"/>'),
   close: wrap('<path d="M6 6l12 12M18 6L6 18"/>'),
-  // Screen-toolbar area toggles: folded map, token circles, crossed swords —
-  // plus the d20 from roll-dice.js (same solid, redrawn in this stroke style).
-  map: wrap('<path d="M3.5 6l5.5-2 6 2 5.5-2v14l-5.5 2-6-2-5.5 2z"/><path d="M9 4v14M15 6v14"/>'),
+  // Screen-toolbar controls, matching the <battle-toolbar> dock glyphs:
+  // grid-map, token circles, Chikin's crossed swords, the roll-dice d20.
+  map: wrap(
+    '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/>',
+  ),
   pool: wrap('<circle cx="8" cy="8.5" r="3.6"/><circle cx="16.5" cy="10" r="2.9"/><circle cx="11" cy="16.8" r="3.2"/>'),
-  tracker: wrap('<path d="M5 3.5l11.5 11.5M19 3.5L7.5 15"/><path d="M14 17.5l3.5-3.5M6.5 14l3.5 3.5"/><path d="M16.5 16.5L20 20M7.5 16.5L4 20"/>'),
+  // Sergey Chikin's 170-weapon/weapon glyph — the same icon the dock and the
+  // standalone <initiative-tracker> use (fill-based, hence no wrap()).
+  tracker: `<svg class="icon" viewBox="0 0 150 190" fill="currentColor" aria-hidden="true">
+    <path fill-rule="evenodd" d="M120.12,145c-6.1,6.36-15.55-.75-13.75-7.35l-10.89-9.13-14,7-2.94-4.74,6.32-6.48-9.25-9.17-8.46,8.49,3.27,5.81C62.19,137.62,51.88,132,51.88,132L41.41,141.2l1.48,3c-9.23,9.08-21-3-12-11.89l2.9,1.33L43,123.06s-5.13-11.38,2.31-18.7L51,107.68l8.92-8.09L35.27,75.19l-1.7-15,15.11.62L74.84,86.06,99.5,63.7l17-2.7L114,76.72l-23.91,24,9.22,8.89,5.31-5.44,4.88,3-6.67,12.69,10,11.91C119.65,130.34,125.77,139.11,120.12,145ZM107.63,76.18l3.21-9.49L101,69.47S60.59,108,56,112.19s2.34,11.87,7.53,6.91S107.63,76.18,107.63,76.18Z"/>
+  </svg>`,
   dice: wrap(
     '<path d="M12 2.2 21.5 7.6v8.8L12 21.8 2.5 16.4V7.6z"/><path d="M6.7 9 12 15.5 17.3 9z"/><path d="M12 2.2 6.7 9 2.5 7.6M12 2.2 17.3 9l4.2-1.4M6.7 9 2.5 16.4 12 21.8l9.5-5.4L17.3 9M12 15.5V21.8"/>',
   ),

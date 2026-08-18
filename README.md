@@ -144,14 +144,17 @@ whole dock.
 
 ## `<battle-mat>` — the battle screen
 
-The battle screen is a full-viewport CSS grid: a toolbar column on the left
-and, stacked on the right, the **map** (a pannable, zoomable square grid where
-you drag player and monster tokens from the pool, draw, erase, measure, attach
-map images), the **token pool** row and the **initiative tracker** area (the
-same panel `<initiative-tracker>` shows, embedded). The toolbar buttons toggle
-the three areas — the choice persists per device in the `battle-mat-ui`
-`localStorage` key — plus a d20 button that opens the dice roller on top of the
-screen and, at the bottom, a close button back to the page.
+The battle screen is a full-viewport CSS grid: stacked on the left, the
+**map** (a pannable, zoomable square grid where you drag player and monster
+tokens from the pool, draw, erase, measure, attach map images), the **token
+pool** row and the **initiative tracker** area (the same panel
+`<initiative-tracker>` shows, embedded; the pool and tracker rows take their
+natural height, the map absorbs the rest) — and a toolbar column on the right,
+in the same corner as the dock. The column has the map tools group at its top
+and, bottom-aligned, dock-style controls: toggles for the three areas (the
+choice persists per device in the `battle-mat-ui` `localStorage` key), a d20
+button that opens the dice roller on top of the screen, and a close button
+back to the page at the very bottom.
 
 `<battle-toolbar>` above is the usual way in; the standalone `<battle-mat>`
 button opens the same screen on its map area:
