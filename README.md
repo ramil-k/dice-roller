@@ -130,10 +130,11 @@ import '@ramilkos/roll-dice/battle-toolbar';
 | `dice`        | die sizes the builder tray offers, e.g. `"6 20"`             | `4 6 8 10 12 20`    |
 | `label-*`     | localized UI strings for the dock, the battle screen toolbar and the tracker area: `label-map`, `label-pool`, `label-dice`, `label-close` plus the tracker's `label-title`, `label-round`, `label-next`, `label-fill`, `label-reset`, `label-resetconfirm`, `label-empty`, `label-name`, `label-hp`, `label-ac`, `label-init`, `label-remove` | English |
 
-Unlike the other widgets the dock pins itself (`position: fixed`); adjust the
-spot with `--bt-right` / `--bt-bottom` / `--bt-z` and the look with `--bt-bg`,
-`--bt-edge` and the per-button accents `--bt-accent-tracker` /
-`--bt-accent-mat` / `--bt-accent-dice` on the element. The element itself is
+Unlike the other widgets the dock pins itself flush into the corner
+(`position: fixed; right: 0; bottom: 0`, only the top-left corner rounded);
+adjust the spot with `--bt-right` / `--bt-bottom` / `--bt-z` and the look with
+`--bt-bg`, `--bt-edge`, `--bt-radius` and the per-button accents
+`--bt-accent-tracker` / `--bt-accent-mat` / `--bt-accent-dice` on the element. The element itself is
 eager and tiny; both the battle screen and the dice overlay load via dynamic
 `import()` on first click.
 
@@ -415,8 +416,8 @@ Theming: `--bm-trk-bg`, `--bm-trk-fg`, `--bm-trk-muted`, `--bm-trk-accent`,
 
 ## Positioning the widgets
 
-`<battle-toolbar>` pins itself to the bottom-right corner — move it with
-`--bt-right` / `--bt-bottom` / `--bt-z` on the element.
+`<battle-toolbar>` pins itself flush into the bottom-right corner — move it
+with `--bt-right` / `--bt-bottom` / `--bt-z` on the element.
 
 `<roll-any-dice>`, `<roll-log>`, `<battle-mat>` and `<initiative-tracker>` are
 plain in-flow elements (`display: inline-block` / `inline-flex`): put them in

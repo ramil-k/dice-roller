@@ -1,7 +1,8 @@
-// <battle-toolbar> — the always-visible dock: a vertical pill pinned to the
-// bottom-right corner with three buttons (initiative, battle map, dice).
-// The first two open the shared battle screen (overlay.js) with that area
-// visible; the dice button opens the roll-dice builder overlay directly.
+// <battle-toolbar> — the always-visible dock: a vertical bar flush in the
+// bottom-right corner (only its top-left corner rounded) with three buttons
+// (initiative, battle map, dice). The first two open the shared battle screen
+// (overlay.js) with that area visible; the dice button opens the roll-dice
+// builder overlay directly.
 //
 // This module is the *eager* half and deliberately imports nothing from the
 // rest of the package: the battle screen and the dice overlay both load via
@@ -9,8 +10,9 @@
 //
 // The dock pins itself (position: fixed); pages adjust the spot and theme via
 // custom properties on the host:
-//   --bt-right / --bt-bottom / --bt-z          corner offsets and stacking
-//   --bt-bg / --bt-edge / --bt-fg              pill background, border, hover
+//   --bt-right / --bt-bottom / --bt-z          corner offsets (default 0) and stacking
+//   --bt-radius                                top-left corner rounding
+//   --bt-bg / --bt-edge / --bt-fg              dock background, border, hover
 //   --bt-accent-tracker / -mat / -dice         per-button icon accents
 //
 // Attributes:
@@ -35,15 +37,18 @@ const DOCK_CSS = `
     --bt-accent-mat: #5fb98d;
     --bt-accent-dice: #7d97e8;
     position: fixed;
-    right: var(--bt-right, 1rem);
-    bottom: var(--bt-bottom, 1rem);
+    right: var(--bt-right, 0);
+    bottom: var(--bt-bottom, 0);
     z-index: var(--bt-z, 1000);
     display: flex;
     flex-direction: column;
-    gap: 0.4rem;
     padding: 0.45rem;
+    /* flush to the corner: edges only where the dock meets the page,
+       and a single rounded corner (top-left) */
     border: 1px solid var(--bt-edge);
-    border-radius: 999px;
+    border-right: none;
+    border-bottom: none;
+    border-radius: var(--bt-radius, 1.25rem) 0 0 0;
     background: var(--bt-bg);
     backdrop-filter: blur(6px);
     box-shadow: 0 8px 24px rgb(0 0 0 / 0.25);
