@@ -1,12 +1,19 @@
-// The battle-mat overlay: a full-viewport top-layer surface hosting the map
-// svg, the token pool, the toolbar and the grid settings. Mirrors the
-// DiceOverlay architecture in roll-dice.js — a detached host element with its
-// own shadow root, promoted into the top layer via the Popover API where
-// available, with a fixed-position + max-z-index fallback elsewhere.
+// The battle screen: a full-viewport top-layer surface laid out as a CSS grid
+//   "toolbar map"
+//   "toolbar pool"
+//   "toolbar tracker"
+// — a vertical toolbar column on the left whose buttons toggle the map, the
+// token pool and the initiative tracker areas (state persisted in the
+// battle-mat-ui localStorage key), plus a dice button that opens the roll-dice
+// builder overlay on top of everything and a close button back to the page.
+// Mirrors the DiceOverlay architecture in roll-dice.js — a detached host
+// element with its own shadow root, promoted into the top layer via the
+// Popover API where available, with a fixed-position + max-z-index fallback
+// elsewhere.
 //
-// One shared instance exists at a time (getOverlay()); <battle-mat> triggers
-// call openBattleMat() from a dynamic import so none of this loads until the
-// first open.
+// One shared instance exists at a time (getOverlay()); <battle-toolbar> and
+// <battle-mat> triggers call openBattleMat() from a dynamic import so none of
+// this loads until the first open.
 
 import { el, svgEl } from './dom.js';
 import { ICONS } from './icons.js';
@@ -29,8 +36,43 @@ import { getAdjectives } from './adjectives.js';
 import { CATEGORIES, iconUrl } from './registry.js';
 import { buildScene, render, applyViewport, updateGrid } from './view.js';
 import { attachTools } from './tools.js';
+import { buildTracker } from './tracker.js';
 
 const MAX_IMAGE_DIM = 2048; // attached images are downscaled to fit (quota)
+
+// Which screen areas are visible — a per-device UI preference, so it lives in
+// its own localStorage key rather than in the shared encounter document.
+const UI_KEY = 'battle-mat-ui';
+const AREAS = ['map', 'pool', 'tracker'];
+
+function loadUiState() {
+  const ui = { map: true, pool: true, tracker: true };
+  try {
+    const saved = JSON.parse(localStorage.getItem(UI_KEY) ?? '{}');
+    for (const area of AREAS) if (typeof saved[area] === 'boolean') ui[area] = saved[area];
+  } catch {
+    /* storage unavailable or corrupt: defaults */
+  }
+  return ui;
+}
+
+function saveUiState(ui) {
+  try {
+    localStorage.setItem(UI_KEY, JSON.stringify(ui));
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+// English defaults for the screen toolbar; the tracker area has its own
+// defaults (DEFAULT_LABELS in tracker.js). Overridden via open()'s `labels`.
+const SCREEN_LABELS = {
+  map: 'Map',
+  pool: 'Token pool',
+  title: 'Initiative',
+  dice: 'Roll dice',
+  close: 'Close battle screen',
+};
 
 const TOOLS = [
   { id: 'select', label: 'Select and move' },
@@ -65,6 +107,12 @@ const OVERLAY_CSS = `
     --bm-grid-line: rgb(from var(--bm-fg) r g b / 0.13);
     --bm-token-player: #4a9e6f;
     --bm-token-monster: #cf5a5a;
+    /* the tracker panel CSS (tracker.js, injected into this shadow root when
+       the tracker area first builds) reads these --bm-trk-* tokens */
+    --bm-trk-fg: var(--bm-fg);
+    --bm-trk-muted: var(--bm-muted);
+    --bm-trk-accent: var(--bm-accent);
+    --bm-trk-edge: var(--bm-edge);
     position: fixed;
     inset: 0;
     /* Fallback stacking for browsers without the Popover API (see _mount). */
@@ -84,9 +132,63 @@ const OVERLAY_CSS = `
     background: transparent;
   }
 
-  .mat-root { position: absolute; inset: 0; background: var(--bm-bg); animation: bm-fade 0.15s ease; }
+  /* The battle screen grid: toolbar column on the left, the map / pool /
+     tracker areas stacked on the right. Area visibility is toggled via
+     data-show-* attributes; with the map off, its 1fr row collapses and the
+     flexible space goes to the tracker. */
+  .mat-root {
+    position: absolute;
+    inset: 0;
+    background: var(--bm-bg);
+    animation: bm-fade 0.15s ease;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto auto;
+    grid-template-areas:
+      "toolbar map"
+      "toolbar pool"
+      "toolbar tracker";
+  }
+  .mat-root:not([data-show-map]) { grid-template-rows: 0 auto minmax(0, 1fr); }
+  .mat-root:not([data-show-map]) .map-area { display: none; }
+  .mat-root:not([data-show-pool]) .pool { display: none; }
+  .mat-root:not([data-show-tracker]) .tracker-area { display: none; }
   @keyframes bm-fade { from { opacity: 0; } }
 
+  /* --- screen toolbar (area toggles, dice, close) --------------------------- */
+  .screen-toolbar {
+    grid-area: toolbar;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.6rem 0.45rem;
+    background: var(--bm-surface);
+    border-right: 1px solid var(--bm-edge);
+    overflow-y: auto;
+  }
+  .screen-toolbar .spacer { flex: 1; }
+  .screen-toolbar button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 2.75rem;
+    height: 2.75rem;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--bm-muted);
+    cursor: pointer;
+  }
+  .screen-toolbar button:hover { color: var(--bm-fg); background: rgb(from var(--bm-fg) r g b / 0.08); }
+  .screen-toolbar button[aria-pressed="true"] { color: var(--bm-bg); background: var(--bm-accent); }
+  .screen-toolbar .icon { width: 1.5rem; height: 1.5rem; }
+  .screen-toolbar .divider { align-self: stretch; height: 1px; margin: 0.25rem 0.3rem; background: var(--bm-edge); }
+
+  /* --- map area -------------------------------------------------------------- */
+  .map-area { grid-area: map; position: relative; overflow: hidden; min-height: 0; }
   .mat { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; display: block; }
   .mat[data-mode="panning"], .mat[data-space] { cursor: grabbing; }
   .mat[data-tool="pan"] { cursor: grab; }
@@ -114,17 +216,12 @@ const OVERLAY_CSS = `
   .foreign-box { fill: rgb(from var(--bm-fg) r g b / 0.05); stroke: var(--bm-muted); stroke-dasharray: 6 4; }
   .foreign-label { fill: var(--bm-muted); font-size: 13px; }
 
-  /* --- token pool ---------------------------------------------------------- */
+  /* --- token pool (a full-width grid row) ----------------------------------- */
   .pool {
-    position: absolute;
-    top: 0.75rem;
-    left: 50%;
-    transform: translateX(-50%);
-    max-width: min(46rem, calc(100vw - 8rem));
+    grid-area: pool;
+    min-width: 0;
     background: var(--bm-surface);
-    border: 1px solid var(--bm-edge);
-    border-radius: 0.8rem;
-    box-shadow: 0 8px 24px rgb(0 0 0 / 0.35);
+    border-top: 1px solid var(--bm-edge);
     padding: 0.5rem 0.65rem;
   }
   .pool .tabs { display: flex; gap: 0.25rem; flex-wrap: wrap; margin-bottom: 0.45rem; }
@@ -145,8 +242,8 @@ const OVERLAY_CSS = `
     background: rgb(from var(--bm-fg) r g b / 0.08);
     border-color: var(--bm-edge);
   }
-  .pool .tab:focus-visible, .avatar:focus-visible, .toolbar button:focus-visible,
-  .swatch:focus-visible, .close:focus-visible, .settings :focus-visible {
+  .pool .tab:focus-visible, .avatar:focus-visible, .tools button:focus-visible,
+  .swatch:focus-visible, .screen-toolbar button:focus-visible, .settings :focus-visible {
     outline: 2px solid var(--bm-accent);
     outline-offset: 2px;
   }
@@ -179,8 +276,8 @@ const OVERLAY_CSS = `
   }
   .pool-ghost img { width: 100%; height: 100%; object-fit: contain; }
 
-  /* --- toolbar ------------------------------------------------------------- */
-  .toolbar {
+  /* --- map tools (floating panel inside the map area) ----------------------- */
+  .tools {
     position: absolute;
     left: 0.75rem;
     top: 50%;
@@ -193,10 +290,10 @@ const OVERLAY_CSS = `
     border-radius: 0.8rem;
     box-shadow: 0 8px 24px rgb(0 0 0 / 0.35);
     padding: 0.4rem;
-    max-height: calc(100vh - 2rem);
+    max-height: calc(100% - 2rem);
     overflow-y: auto;
   }
-  .toolbar button {
+  .tools button {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -209,16 +306,16 @@ const OVERLAY_CSS = `
     color: var(--bm-muted);
     cursor: pointer;
   }
-  .toolbar button:hover { color: var(--bm-fg); background: rgb(from var(--bm-fg) r g b / 0.08); }
-  .toolbar button[aria-pressed="true"], .toolbar button[aria-expanded="true"] {
+  .tools button:hover { color: var(--bm-fg); background: rgb(from var(--bm-fg) r g b / 0.08); }
+  .tools button[aria-pressed="true"], .tools button[aria-expanded="true"] {
     color: var(--bm-bg);
     background: var(--bm-accent);
   }
-  .toolbar .icon { width: 1.35rem; height: 1.35rem; }
-  .toolbar .divider { height: 1px; margin: 0.25rem 0.3rem; background: var(--bm-edge); }
+  .tools .icon { width: 1.35rem; height: 1.35rem; }
+  .tools .divider { height: 1px; margin: 0.25rem 0.3rem; background: var(--bm-edge); }
   .swatches { display: grid; grid-template-columns: 1fr 1fr; gap: 0.3rem; padding: 0.15rem 0.45rem; }
-  /* .toolbar button sets 2.5rem sizing; swatches need their own (specificity) */
-  .toolbar button.swatch {
+  /* .tools button sets 2.5rem sizing; swatches need their own (specificity) */
+  .tools button.swatch {
     width: 0.95rem;
     height: 0.95rem;
     padding: 0;
@@ -226,7 +323,7 @@ const OVERLAY_CSS = `
     border-radius: 50%;
     cursor: pointer;
   }
-  .toolbar button.swatch[aria-pressed="true"] { border-color: var(--bm-fg); }
+  .tools button.swatch[aria-pressed="true"] { border-color: var(--bm-fg); }
 
   /* --- settings panel ------------------------------------------------------ */
   /* the display:grid below would defeat the hidden attribute without this */
@@ -276,24 +373,22 @@ const OVERLAY_CSS = `
   }
   .status:empty { opacity: 0; }
   .status.warn { color: #ffb0b0; border-color: #a05050; }
-  .close {
-    position: absolute;
-    top: 0.75rem;
-    right: 0.75rem;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 2.6rem;
-    height: 2.6rem;
-    border: 1px solid var(--bm-edge);
-    border-radius: 50%;
+
+  /* --- initiative tracker area ----------------------------------------------
+     buildTracker (tracker.js) fills this with .trk-head / .trk-list /
+     .trk-empty; its own injected CSS handles the contents, this rule only
+     shapes the grid area (bounded height with the map on, flexible without). */
+  .tracker-area {
+    grid-area: tracker;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    max-height: 32vh;
+    overflow: hidden;
     background: var(--bm-surface);
-    color: var(--bm-muted);
-    cursor: pointer;
-    box-shadow: 0 8px 24px rgb(0 0 0 / 0.35);
+    border-top: 1px solid var(--bm-edge);
   }
-  .close:hover { color: var(--bm-fg); }
-  .close .icon { width: 1.3rem; height: 1.3rem; }
+  .mat-root:not([data-show-map]) .tracker-area { max-height: none; }
 `;
 
 class BattleMatOverlay {
@@ -306,10 +401,20 @@ class BattleMatOverlay {
     this._onKeydown = this._onKeydown.bind(this);
   }
 
-  open({ opener, roster = [], storageKey = DEFAULT_KEY } = {}) {
+  // `labels` localizes the screen toolbar and the tracker area (see
+  // SCREEN_LABELS and tracker.js DEFAULT_LABELS); `show` names an area
+  // ('map' | 'pool' | 'tracker') that must be visible on open — the dock
+  // button the user came in through.
+  open({ opener, roster = [], storageKey = DEFAULT_KEY, labels = {}, show } = {}) {
     this.opener = opener ?? null;
     this.roster = roster;
     this.storageKey = storageKey;
+    this.labels = labels;
+    this._ui = loadUiState();
+    if (show && AREAS.includes(show) && !this._ui[show]) {
+      this._ui[show] = true;
+      saveUiState(this._ui);
+    }
     // the encounter document is shared (initiative tracker, add-to-battle) —
     // all edits flow through the per-key store, re-renders through its events
     this.store = getStore(storageKey);
@@ -321,11 +426,13 @@ class BattleMatOverlay {
     this._mount();
     document.addEventListener('keydown', this._onKeydown, true);
     this._syncFromDoc();
-    this._toolButtons.get('select').focus();
+    this._screenButtons.get(show && AREAS.includes(show) ? show : 'map').focus();
   }
 
   close() {
     this.tools?.detach();
+    this._tracker?.dispose();
+    this._tracker = null;
     this._unsubscribe?.();
     this._unsubscribe = null;
     this.store?.flush();
@@ -358,6 +465,8 @@ class BattleMatOverlay {
   // ---- shell ---------------------------------------------------------------
 
   _buildShell() {
+    this._tracker?.dispose(); // reopened: drop the previous tracker's store hook
+    this._tracker = null;
     for (const child of Array.from(this.root.children)) {
       if (child.tagName !== 'STYLE') child.remove();
     }
@@ -365,35 +474,113 @@ class BattleMatOverlay {
     const rootEl = el('div', 'mat-root');
     rootEl.setAttribute('role', 'dialog');
     rootEl.setAttribute('aria-modal', 'true');
-    rootEl.setAttribute('aria-label', 'Battle map');
+    rootEl.setAttribute('aria-label', 'Battle screen');
 
+    // Map area: the scene svg plus its floating chrome (tools, settings).
+    const mapArea = el('div', 'map-area');
     this.svg = svgEl('svg', { class: 'mat' });
     this.refs = buildScene(this.svg);
-    rootEl.appendChild(this.svg);
+    mapArea.append(this.svg, this._buildToolbar(), this._buildSettings());
 
     this._status = el('div', 'status');
     this._status.setAttribute('aria-live', 'polite');
 
-    rootEl.append(this._buildToolbar(), this._buildSettings(), this._buildPool(), this._status, this._buildClose());
+    this._trackerEl = el('div', 'tracker-area');
+
+    rootEl.append(this._buildScreenToolbar(), mapArea, this._buildPool(), this._trackerEl, this._status);
     this._buildFileInputs(rootEl);
     this.root.appendChild(rootEl);
     this._rootEl = rootEl;
+    this._applyUiState();
+
+    // buildTracker injects its stylesheet into container.getRootNode(), so it
+    // must run after the tracker area is attached under this shadow root.
+    this._tracker = buildTracker(this._trackerEl, { storageKey: this.storageKey, labels: this.labels });
 
     this._wireTools();
     this._wireImageDrop();
   }
 
-  _buildClose() {
-    const btn = el('button', 'close');
-    btn.type = 'button';
-    btn.setAttribute('aria-label', 'Close battle mat');
-    btn.innerHTML = ICONS.close;
-    btn.addEventListener('click', () => this.close());
-    return btn;
+  // The left toolbar column: area toggles (map, pool, tracker), the dice
+  // roller launcher, and — pushed to the bottom — the close button.
+  _buildScreenToolbar() {
+    const L = { ...SCREEN_LABELS, ...this.labels };
+    const bar = el('div', 'screen-toolbar');
+    bar.setAttribute('role', 'toolbar');
+    bar.setAttribute('aria-label', 'Battle screen');
+    bar.setAttribute('aria-orientation', 'vertical');
+
+    this._screenButtons = new Map();
+    const toggles = [
+      ['map', L.map],
+      ['pool', L.pool],
+      ['tracker', L.title], // the tracker's own panel title doubles as its name
+    ];
+    for (const [area, label] of toggles) {
+      const btn = el('button');
+      btn.type = 'button';
+      btn.setAttribute('aria-label', label);
+      btn.title = label;
+      btn.innerHTML = ICONS[area];
+      btn.addEventListener('click', () => this._toggleArea(area));
+      this._screenButtons.set(area, btn);
+      bar.appendChild(btn);
+    }
+
+    bar.appendChild(el('div', 'divider'));
+
+    const dice = el('button');
+    dice.type = 'button';
+    dice.setAttribute('aria-label', L.dice);
+    dice.title = L.dice;
+    dice.innerHTML = ICONS.dice;
+    dice.addEventListener('click', () => this._openDice(dice));
+    bar.appendChild(dice);
+
+    bar.appendChild(el('div', 'spacer'));
+
+    const close = el('button');
+    close.type = 'button';
+    close.setAttribute('aria-label', L.close);
+    close.title = L.close;
+    close.innerHTML = ICONS.close;
+    close.addEventListener('click', () => this.close());
+    bar.appendChild(close);
+    return bar;
+  }
+
+  _toggleArea(area) {
+    this._ui[area] = !this._ui[area];
+    saveUiState(this._ui);
+    this._applyUiState();
+  }
+
+  _applyUiState() {
+    for (const area of AREAS) {
+      this._rootEl.toggleAttribute(`data-show-${area}`, this._ui[area]);
+      this._screenButtons.get(area).setAttribute('aria-pressed', String(this._ui[area]));
+    }
+  }
+
+  // The dice builder overlay lives in the separate roll-dice chunk; load it on
+  // demand. It mounts as a popover shown after us, so it paints on top.
+  async _openDice(btn) {
+    if (this._diceLoading) return;
+    this._diceLoading = true;
+    btn.setAttribute('disabled', '');
+    try {
+      const mod = await import('../roll-dice.js');
+      mod.openDiceBuilder(btn);
+    } catch (err) {
+      console.error('battle screen: failed to load the dice module', err);
+    } finally {
+      btn.removeAttribute('disabled');
+      this._diceLoading = false;
+    }
   }
 
   _buildToolbar() {
-    const bar = el('div', 'toolbar');
+    const bar = el('div', 'tools');
     bar.setAttribute('role', 'toolbar');
     bar.setAttribute('aria-label', 'Battle map tools');
     bar.setAttribute('aria-orientation', 'vertical');
@@ -896,6 +1083,19 @@ class BattleMatOverlay {
   // ---- keyboard ----------------------------------------------------------------
 
   _onKeydown(e) {
+    // The dice overlay can be stacked above this screen (its own top-layer
+    // popover with its own document-level Escape/Tab handling and focus
+    // trap). While focus is inside it, key events retarget to its host — not
+    // ours — so leave those keys to it instead of double-handling (an Escape
+    // meant for the dice would otherwise close this screen too).
+    if (
+      e.target !== this.host &&
+      e.target !== document.body &&
+      e.target !== document.documentElement &&
+      !this.host.contains(e.target)
+    ) {
+      return;
+    }
     if (e.key === 'Escape') {
       // cancel the in-flight interaction first; close only from a quiet state
       if (this.tools.cancelActive()) {

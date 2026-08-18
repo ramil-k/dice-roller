@@ -36,6 +36,9 @@
     "./battle-mat": {
       "import": "./dist/battle-mat.js"
     },
+    "./battle-toolbar": {
+      "import": "./dist/battle-toolbar.js"
+    },
     "./initiative-tracker": {
       "import": "./dist/initiative-tracker.js"
     },

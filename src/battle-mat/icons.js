@@ -24,4 +24,12 @@ export const ICONS = {
   upload: wrap('<path d="M12 15V4M7.5 8L12 3.5 16.5 8M5 19.5h14"/>'),
   trash: wrap('<path d="M4.5 6.5h15M9.5 6V4.5h5V6M7 6.5l1 13h8l1-13M10.3 10v6M13.7 10v6"/>'),
   close: wrap('<path d="M6 6l12 12M18 6L6 18"/>'),
+  // Screen-toolbar area toggles: folded map, token circles, crossed swords —
+  // plus the d20 from roll-dice.js (same solid, redrawn in this stroke style).
+  map: wrap('<path d="M3.5 6l5.5-2 6 2 5.5-2v14l-5.5 2-6-2-5.5 2z"/><path d="M9 4v14M15 6v14"/>'),
+  pool: wrap('<circle cx="8" cy="8.5" r="3.6"/><circle cx="16.5" cy="10" r="2.9"/><circle cx="11" cy="16.8" r="3.2"/>'),
+  tracker: wrap('<path d="M5 3.5l11.5 11.5M19 3.5L7.5 15"/><path d="M14 17.5l3.5-3.5M6.5 14l3.5 3.5"/><path d="M16.5 16.5L20 20M7.5 16.5L4 20"/>'),
+  dice: wrap(
+    '<path d="M12 2.2 21.5 7.6v8.8L12 21.8 2.5 16.4V7.6z"/><path d="M6.7 9 12 15.5 17.3 9z"/><path d="M12 2.2 6.7 9 2.5 7.6M12 2.2 17.3 9l4.2-1.4M6.7 9 2.5 16.4 12 21.8l9.5-5.4L17.3 9M12 15.5V21.8"/>',
+  ),
 };

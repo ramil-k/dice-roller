@@ -802,6 +802,10 @@ class DiceOverlay {
     this.builder = false;
     this._buildShell();
     this._mount();
+    // Move focus into the dialog right away (not just after the dice settle):
+    // an underlying surface (e.g. the battle screen) decides whether a
+    // document-level Escape/Tab is its to handle by where focus is.
+    this._els.rerollBtn.focus();
     document.addEventListener('keydown', this._onKeydown, true);
     this.rollAndShow();
   }
@@ -819,6 +823,9 @@ class DiceOverlay {
     this.parsed = null;
     this._buildShell();
     this._mount();
+    // See open(): focus marks this dialog as topmost. The Roll button starts
+    // disabled here (empty pool) and can't hold focus, so use Close.
+    this.root.querySelector('button.close').focus();
     document.addEventListener('keydown', this._onKeydown, true);
     this._renderPool();
   }
@@ -1128,6 +1135,14 @@ let sharedOverlay = null;
 function getOverlay() {
   if (!sharedOverlay) sharedOverlay = new DiceOverlay();
   return sharedOverlay;
+}
+
+// Programmatic launcher for the freeform builder overlay — the battle screen's
+// dice button opens it through this (via a dynamic import, so both share the
+// singleton above and the mount-last-paints-on-top popover behavior).
+// `opener` gets focus back on close; `opts.sides` limits the tray's die types.
+export function openDiceBuilder(opener, onRoll, opts = {}) {
+  getOverlay().openBuilder(opener ?? null, onRoll ?? null, opts);
 }
 
 export class RollDice extends HTMLElement {

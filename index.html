@@ -74,15 +74,9 @@
       roll-dice { color: var(--fg); }
       ol { color: var(--fg); }
       ol li { margin-bottom: 0.35rem; }
-      /* Corner-pinning is the page's job now — the widgets are plain in-flow
-         elements. Pin the freeform roller to the classic FAB spot: */
-      roll-any-dice {
-        position: fixed;
-        right: 1.25rem;
-        bottom: 1.25rem;
-        z-index: 1000;
-      }
-      battle-mat, initiative-tracker, roll-log { margin: 0.5rem 0 1rem; }
+      /* <battle-toolbar> pins itself to the bottom-right corner; the other
+         widgets are plain in-flow elements. */
+      battle-mat, initiative-tracker, roll-any-dice, roll-log { margin: 0.5rem 0 1rem; }
       .atb-row { display: flex; align-items: center; gap: 0.75rem; margin: 0.5rem 0 1rem; }
       .atb-row add-to-battle { flex: 0 0 auto; }
     </style>
@@ -140,14 +134,31 @@
         </div>
       </div>
 
+      <h2>Battle toolbar</h2>
+      <p>
+        The <code>&lt;battle-toolbar&gt;</code> element is the recommended way
+        to put all of this on a page: an always-visible vertical dock pinned to
+        the bottom-right corner (look there now) with three buttons —
+        initiative, battle map and dice. The first two open the shared
+        <strong>battle screen</strong>: a full-screen grid with a toolbar
+        column on the left and the map, the token pool and the initiative
+        tracker stacked on the right. The toolbar buttons toggle those areas
+        (the choice is remembered), the d20 button opens the dice roller on
+        top of everything, and the bottom button closes the screen.
+      </p>
+      <pre><code>&lt;script type="module"
+  src="https://ramil-k.github.io/dice-roller/battle-toolbar.js"&gt;&lt;/script&gt;
+
+&lt;battle-toolbar&gt;&lt;/battle-toolbar&gt;</code></pre>
+
       <h2>Freeform roller</h2>
       <p>
-        The <code>&lt;roll-any-dice&gt;</code> element is a button that opens
-        a builder where you can add and remove any dice, then roll the pool.
-        Like every widget on this page it is a plain in-flow element; here the
-        page pins it to the bottom-right corner with three lines of CSS
-        (<code>position: fixed</code> on the host).
+        The <code>&lt;roll-any-dice&gt;</code> element is a standalone button
+        that opens a builder where you can add and remove any dice, then roll
+        the pool — the same overlay the toolbar's d20 button opens. A plain
+        in-flow element:
       </p>
+      <roll-any-dice></roll-any-dice>
 
       <h2>Roll log</h2>
       <p>
@@ -160,12 +171,13 @@
 
       <h2>Battle mat</h2>
       <p>
-        The <code>&lt;battle-mat&gt;</code> button opens a full-screen grid
-        map: drag player and monster tokens from the pool, draw with pen and
-        shapes, measure with the ruler, attach a map image and align the grid
-        to it. The map autosaves to <code>localStorage</code> as a
+        The <code>&lt;battle-mat&gt;</code> button is a standalone launcher for
+        the same battle screen (opened on its map area): drag player and
+        monster tokens from the pool row, draw with pen and shapes, measure
+        with the ruler, attach a map image and align the grid to it. The map
+        autosaves to <code>localStorage</code> as a
         <a href="https://jsoncanvas.org">JSON Canvas</a> document and can be
-        exported/imported as a <code>.canvas</code> file. The map code loads
+        exported/imported as a <code>.canvas</code> file. The screen code loads
         lazily — nothing is fetched until the first open.
       </p>
       <battle-mat></battle-mat>
@@ -183,17 +195,18 @@
       </p>
       <div class="atb-row">
         <add-to-battle name="Wolf" kind="monster" hp="11" ac="13" init-mod="2"
-          image="https://sergeychikin.ru/365/070-animals/wolf.svg">Add wolf</add-to-battle>
+          image="365/070-animals/wolf.svg">Add wolf</add-to-battle>
         <add-to-battle name="Ogre" kind="monster" hp="59" ac="11" init-mod="-1" size="large"
-          image="https://sergeychikin.ru/365/100-fantasy/troll.svg">Add ogre (large)</add-to-battle>
+          image="365/120-faces/demon.svg">Add ogre (large)</add-to-battle>
         <add-to-battle compact name="Bat" kind="monster" hp="1" ac="12" init-mod="2"
-          image="https://sergeychikin.ru/365/070-animals/bat.svg"></add-to-battle>
+          image="365/070-animals/bat.svg"></add-to-battle>
       </div>
 
       <h2>Initiative tracker</h2>
       <p>
-        The <code>&lt;initiative-tracker&gt;</code> element shares the battle
-        mat's encounter document. Try it end to end:
+        The battle screen has the tracker built in as its bottom area; the
+        standalone <code>&lt;initiative-tracker&gt;</code> element below shares
+        the same encounter document. Try it end to end:
       </p>
       <ol>
         <li>Add a few combatants above, or open the battle mat and drag party
@@ -234,23 +247,26 @@
       </p>
     </main>
 
-    <roll-any-dice></roll-any-dice>
+    <battle-toolbar></battle-toolbar>
 
     <script type="module">
       import './src/roll-dice.js';
       import './src/battle-mat.js';
+      import './src/battle-toolbar.js';
       import './src/initiative-tracker.js';
       import './src/add-to-battle.js';
 
-      // Page-provided party/monster roster for the battle-mat token pool;
-      // the built-in icon categories appear after these tabs.
-      document.querySelector('battle-mat').roster = [
-        { name: 'Aria', image: 'https://sergeychikin.ru/365/090-human/woman.svg', kind: 'player' },
-        { name: 'Bors', image: 'https://sergeychikin.ru/365/090-human/knight.svg', kind: 'player' },
-        { name: 'Fenwick', image: 'https://sergeychikin.ru/365/090-human/magician.svg', kind: 'player' },
-        { name: 'Dire Wolf', image: 'https://sergeychikin.ru/365/070-animals/wolf.svg', kind: 'monster' },
-        { name: 'Young Dragon', image: 'https://sergeychikin.ru/365/080-other-animals/dragon.svg', kind: 'monster' },
+      // Page-provided party/monster roster for the battle screen's token
+      // pool; the built-in icon categories appear after these tabs.
+      const roster = [
+        { name: 'Aria', image: '365/090-human/woman.svg', kind: 'player' },
+        { name: 'Bors', image: '365/090-human/knight.svg', kind: 'player' },
+        { name: 'Fenwick', image: '365/090-human/magician.svg', kind: 'player' },
+        { name: 'Dire Wolf', image: '365/070-animals/wolf.svg', kind: 'monster' },
+        { name: 'Young Dragon', image: '365/080-other-animals/dragon.svg', kind: 'monster' },
       ];
+      document.querySelector('battle-toolbar').roster = roster;
+      document.querySelector('battle-mat').roster = roster;
       document.addEventListener('roll', (e) => {
         const r = e.detail;
         document.getElementById('log').textContent =

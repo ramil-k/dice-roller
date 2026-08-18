@@ -103,12 +103,57 @@ The panel is themable via the `--rd-log-*` custom properties set on the
 element: `--rd-log-bg`, `--rd-log-fg`, `--rd-log-muted`, `--rd-log-accent`,
 `--rd-log-edge`, `--rd-log-btn-bg`.
 
-## `<battle-mat>` — grid battle map
+## `<battle-toolbar>` — the dock
 
-A floating corner button that opens a full-screen battle map: a pannable,
-zoomable square grid where you drag player and monster tokens from a pool at
-the top, draw with pen and shapes, erase, measure distances with a ruler, and
-attach map images with the grid aligned over them.
+The recommended way to put the battle widgets on a page: an always-visible
+vertical dock pinned to the bottom-right corner with three buttons —
+initiative, battle map, dice. The first two open the shared
+[battle screen](#battle-mat--the-battle-screen) with that area visible; the
+dice button opens the [freeform roller](#roll-any-dice--freeform-roller)
+overlay directly.
+
+```html
+<script type="module"
+  src="https://ramil-k.github.io/dice-roller/battle-toolbar.js"></script>
+
+<battle-toolbar></battle-toolbar>
+```
+
+```js
+import '@ramilkos/roll-dice/battle-toolbar';
+```
+
+| Attribute     | Values                                                       | Default             |
+| ------------- | ------------------------------------------------------------ | ------------------- |
+| `storage-key` | `localStorage` key of the shared encounter                   | `battle-mat-canvas` |
+| `roster`      | JSON array of extra pool tokens; the property wins           | `[]`                |
+| `dice`        | die sizes the builder tray offers, e.g. `"6 20"`             | `4 6 8 10 12 20`    |
+| `label-*`     | localized UI strings for the dock, the battle screen toolbar and the tracker area: `label-map`, `label-pool`, `label-dice`, `label-close` plus the tracker's `label-title`, `label-round`, `label-next`, `label-fill`, `label-reset`, `label-resetconfirm`, `label-empty`, `label-name`, `label-hp`, `label-ac`, `label-init`, `label-remove` | English |
+
+Unlike the other widgets the dock pins itself (`position: fixed`); adjust the
+spot with `--bt-right` / `--bt-bottom` / `--bt-z` and the look with `--bt-bg`,
+`--bt-edge` and the per-button accents `--bt-accent-tracker` /
+`--bt-accent-mat` / `--bt-accent-dice` on the element. The element itself is
+eager and tiny; both the battle screen and the dice overlay load via dynamic
+`import()` on first click.
+
+The standalone `<roll-any-dice>`, `<battle-mat>` and `<initiative-tracker>`
+elements below remain available when you want a single button instead of the
+whole dock.
+
+## `<battle-mat>` — the battle screen
+
+The battle screen is a full-viewport CSS grid: a toolbar column on the left
+and, stacked on the right, the **map** (a pannable, zoomable square grid where
+you drag player and monster tokens from the pool, draw, erase, measure, attach
+map images), the **token pool** row and the **initiative tracker** area (the
+same panel `<initiative-tracker>` shows, embedded). The toolbar buttons toggle
+the three areas — the choice persists per device in the `battle-mat-ui`
+`localStorage` key — plus a d20 button that opens the dice roller on top of the
+screen and, at the bottom, a close button back to the page.
+
+`<battle-toolbar>` above is the usual way in; the standalone `<battle-mat>`
+button opens the same screen on its map area:
 
 ```html
 <battle-mat></battle-mat>
@@ -120,8 +165,8 @@ attach map images with the grid aligned over them.
 </script>
 ```
 
-**The map code loads lazily.** The `battle-mat` entry is a small trigger
-element; everything else (overlay, tools, icon registry) is fetched via a
+**The screen code loads lazily.** The `battle-mat` entry is a small trigger
+element; everything else (screen, tools, icon registry) is fetched via a
 dynamic `import()` the first time the button is clicked. Nothing map-related
 is downloaded before that.
 
@@ -130,7 +175,7 @@ import '@ramilkos/roll-dice/battle-mat';
 ```
 
 The package ships as ES modules only (no UMD — UMD bundles cannot code-split,
-and the map chunk must stay lazy). If you self-host `dist/battle-mat.js`,
+and the screen chunk must stay lazy). If you self-host `dist/battle-mat.js`,
 also host the `battle-mat-overlay-*.js` chunk next to it; the dynamic import
 resolves relative to the entry file. Bundlers handle the split automatically.
 
@@ -184,8 +229,9 @@ places the token — handy on touch screens; Escape or a second avatar click
 disarms it.
 
 Escape cancels the in-flight action first (drawing, drag, placement), then
-closes an open settings panel, then the overlay itself, returning focus to
-the button that opened it.
+closes an open settings panel, then the screen itself, returning focus to
+the button that opened it. With the dice overlay open on top, Escape closes
+just the dice.
 
 ### Storage format: JSON Canvas
 
@@ -224,6 +270,11 @@ If autosave fails (private browsing, or a large map image exceeding the
 `localStorage` quota) the map keeps working in memory and the status bar
 suggests using **Export**.
 
+Beside the encounter document the screen keeps one more `localStorage` key,
+`battle-mat-ui` — the area-visibility toggles (`{ "map": true, "pool": true,
+"tracker": true }`). It is a per-device UI preference and is not part of the
+exported `.canvas` file.
+
 ### Built-in token icons
 
 The Humanoids / Animals / Monsters / Items pool tabs use
@@ -258,9 +309,10 @@ are only as good as the scrape) before committing.
 ### Theming
 
 Set the `--bm-*` custom properties on `battle-mat` (button: `--bm-fab-bg`,
-`--bm-fab-fg`) or globally on `:root` for the overlay palette: `--bm-bg`,
+`--bm-fab-fg`) or globally on `:root` for the screen palette: `--bm-bg`,
 `--bm-surface`, `--bm-fg`, `--bm-muted`, `--bm-accent`, `--bm-edge`,
-`--bm-grid-line`, `--bm-token-player`, `--bm-token-monster`.
+`--bm-grid-line`, `--bm-token-player`, `--bm-token-monster`. The embedded
+tracker area derives its `--bm-trk-*` tokens from that palette.
 
 ## `<add-to-battle>` — add a combatant
 
@@ -312,9 +364,11 @@ Theming: `--bm-atb-bg`, `--bm-atb-fg`, `--bm-atb-muted`, `--bm-atb-accent`,
 
 ## `<initiative-tracker>` — turn order
 
-A corner widget that tracks initiative for the battle mat's encounter. It
-shares the mat's document: every token on the mat is a combatant here, and
-edits sync live in both directions (same tab and across tabs).
+A standalone corner widget with the same initiative panel the battle screen
+embeds as its tracker area — use it when you want turn order on the page
+without opening the screen. It shares the encounter document: every token on
+the mat is a combatant here, and edits sync live in both directions (same tab
+and across tabs).
 
 ```html
 <battle-mat></battle-mat>
@@ -361,11 +415,14 @@ Theming: `--bm-trk-bg`, `--bm-trk-fg`, `--bm-trk-muted`, `--bm-trk-accent`,
 
 ## Positioning the widgets
 
+`<battle-toolbar>` pins itself to the bottom-right corner — move it with
+`--bt-right` / `--bt-bottom` / `--bt-z` on the element.
+
 `<roll-any-dice>`, `<roll-log>`, `<battle-mat>` and `<initiative-tracker>` are
 plain in-flow elements (`display: inline-block` / `inline-flex`): put them in
 a sidebar, a card, a toolbar — anywhere. None of them positions itself.
 
-To get the classic floating corner button, pin the host from the page:
+To get a single floating corner button, pin the host from the page:
 
 ```css
 roll-any-dice {
@@ -399,7 +456,7 @@ initiative-tracker[data-pinned] {
 }
 ```
 
-The full-screen overlays (dice roller, battle mat) are unaffected — they
+The full-screen overlays (dice roller, battle screen) are unaffected — they
 always mount into the top layer regardless of where their button sits.
 
 ## Develop
@@ -523,10 +580,12 @@ roll(poolToParsed([20, 6, 6], 2)); // build a roll from a pool of die sizes
 - `src/svg.js` — projects the solids to shaded SVG dice.
 - `src/roll-dice.js` — the `<roll-dice>` / `<roll-any-dice>` / `<roll-log>` elements + overlay (library entry).
 - `src/battle-mat.js` — the `<battle-mat>` trigger element (second library entry, eager half).
-- `src/initiative-tracker.js` — the `<initiative-tracker>` widget (third library entry, eager half).
-- `src/add-to-battle.js` — the `<add-to-battle>` pool button (fourth library entry, eager half).
-- `src/battle-mat/` — the lazily-loaded map + tracker implementation:
-  `overlay.js` (mat shell), `view.js` (SVG scene), `tools.js` (pointer state
+- `src/battle-toolbar.js` — the `<battle-toolbar>` corner dock (library entry, eager).
+- `src/initiative-tracker.js` — the `<initiative-tracker>` widget (library entry, eager half).
+- `src/add-to-battle.js` — the `<add-to-battle>` pool button (library entry, eager half).
+- `src/battle-mat/` — the lazily-loaded battle screen + tracker implementation:
+  `overlay.js` (the screen: grid layout, toolbar, map shell), `view.js` (SVG
+  scene), `tools.js` (pointer state
   machine), `tracker.js` (initiative panel), and the pure modules
   `canvas-doc.js`, `grid.js`, `viewport.js`, `combat.js` (turn order plus
   `addCombatant`), `registry.js`, `store.js` (the shared per-key encounter store).

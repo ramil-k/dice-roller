@@ -1,6 +1,8 @@
-// <battle-mat> — launcher button for the battle-map overlay. A normal
-// in-flow element: to float it in a page corner, style the host from the
-// page (position: fixed + inset + z-index).
+// <battle-mat> — standalone launcher button for the battle screen (opened on
+// its map area). A normal in-flow element: to float it in a page corner,
+// style the host from the page (position: fixed + inset + z-index). Pages
+// that want the full dock (initiative + map + dice buttons, localized labels)
+// should use <battle-toolbar> instead.
 //
 // This module is the *eager* half of the component and deliberately imports
 // nothing from the rest of the package: everything map-related (overlay,
@@ -114,6 +116,7 @@ export class BattleMat extends HTMLElement {
         opener: this._fab,
         roster: this.roster,
         storageKey: this.getAttribute('storage-key') ?? 'battle-mat-canvas',
+        show: 'map',
       });
     } catch (err) {
       console.error('battle-mat: failed to load the map module', err);
