@@ -1,17 +1,19 @@
 // Built-in token icon registry: a hand-curated slice of Chikin Icons
-// (https://sergeychikin.ru/365/). The icons are free to use, but commercial
-// use requires a license from sergeychikin.ru — see the README. Icons are
-// hot-linked from that domain at runtime (rendered via <img>, which needs no
-// CORS); exports persist the URL and never inline the SVG.
+// (https://sergeychikin.ru/365/). The SVGs live in public/365/ under their
+// original set paths and are served from this repo's GitHub Pages site
+// (sergeychikin.ru cookie-gates hotlinking, so they can't be loaded from the
+// source domain). The icons are free to use, but commercial use requires a
+// license from sergeychikin.ru — see LICENSE. Rendered via <img> (no CORS
+// needed); exports persist the URL and never inline the SVG.
 //
-// There is no machine-readable index on the site, so entries are curated by
-// hand from the published set. Paths were verified against the live page.
-// Add new categories by appending to CATEGORIES; the pool UI renders them
-// in order after the page-provided roster tabs.
+// The set has no machine-readable index, so entries are curated by hand.
+// Add new categories by appending to CATEGORIES (and downloading the files
+// into public/365/ — the source site needs its realauth cookie, see README);
+// the pool UI renders them in order after the page-provided roster tabs.
 //
 // DOM-free; covered by test/battle-mat-registry.test.js.
 
-const BASE = 'https://sergeychikin.ru/365';
+const BASE = 'https://ramil-k.github.io/dice-roller/365';
 
 export const CATEGORIES = [
   {

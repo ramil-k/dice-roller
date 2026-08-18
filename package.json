@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "description": "A zero-dependency <roll-dice> web component for tabletop RPG sites, with mathematically-constructed 3D SVG dice.",
   "type": "module",
-  "license": "MIT",
-  "author": "ramil-k",
+  "license": "SEE LICENSE IN LICENSE",
+  "author": "Ramil Karimov <ramil1017@gmail.com> (https://github.com/ramil-k)",
   "keywords": [
     "dice",
     "rpg",
@@ -23,7 +23,10 @@
   "bugs": {
     "url": "https://github.com/ramil-k/dice-roller/issues"
   },
-  "files": ["dist", "src"],
+  "files": [
+    "dist",
+    "src"
+  ],
   "main": "./dist/roll-dice.js",
   "module": "./dist/roll-dice.js",
   "exports": {

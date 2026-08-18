@@ -1,21 +1,30 @@
-MIT License
+Non-Commercial Open License
 
-Copyright (c) 2026 ramil-k
+Copyright (c) 2026 Ramil Karimov
+Contact: ramil1017@gmail.com, https://github.com/ramil-k
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+1. Code and components
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+Permission is granted, free of charge, to any person to use, copy, modify
+and distribute this software and its documentation for any non-commercial
+purpose, provided that this copyright notice and this license are included
+in all copies or substantial portions of the software.
+
+Commercial use of this software requires prior written permission from the
+author (see the contact details above).
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+AUTHOR BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY ARISING FROM, OUT
+OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+2. Chikin Icons
+
+The SVG files under public/365/ are part of the Chikin Icons set drawn by
+Sergey Chikin (https://sergeychikin.ru/365/). They are included unmodified,
+each under its original path within the set, and are NOT covered by the
+license above. Per the icon set's own terms, the icons are free to use, but
+commercial use requires a license from Sergey Chikin. See
+https://sergeychikin.ru/365/ for the icon set's terms and contact details.

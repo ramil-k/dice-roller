@@ -1,3 +1,5 @@
+import { existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, it, expect } from 'vitest';
 import { CATEGORIES, iconUrl } from '../src/battle-mat/registry.js';
 
@@ -29,12 +31,21 @@ describe('CATEGORIES', () => {
       }
     }
   });
+
+  it('every icon path has its SVG checked in under public/365/', () => {
+    for (const cat of CATEGORIES) {
+      for (const icon of cat.icons) {
+        const file = fileURLToPath(new URL(`../public/365/${icon.path}`, import.meta.url));
+        expect(existsSync(file), `missing ${icon.path}`).toBe(true);
+      }
+    }
+  });
 });
 
 describe('iconUrl', () => {
   it('builds an absolute https URL from a registry path', () => {
     const url = iconUrl({ name: 'Knight', path: '090-human/knight.svg' });
-    expect(url).toBe('https://sergeychikin.ru/365/090-human/knight.svg');
+    expect(url).toBe('https://ramil-k.github.io/dice-roller/365/090-human/knight.svg');
   });
 
   it('prefers an explicit url when present (roster entries)', () => {
@@ -44,7 +55,7 @@ describe('iconUrl', () => {
   it('produces https URLs for the whole registry', () => {
     for (const cat of CATEGORIES) {
       for (const icon of cat.icons) {
-        expect(iconUrl(icon)).toMatch(/^https:\/\/sergeychikin\.ru\/365\/.+\.svg$/);
+        expect(iconUrl(icon)).toMatch(/^https:\/\/ramil-k\.github\.io\/dice-roller\/365\/.+\.svg$/);
       }
     }
   });

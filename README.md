@@ -228,16 +228,22 @@ suggests using **Export**.
 
 The Humanoids / Animals / Monsters / Items pool tabs use
 [Chikin Icons](https://sergeychikin.ru/365/) — an icon pack drawn by Sergey
-Chikin (sergeychikin.ru). The icons are hot-linked from his site at runtime,
-not bundled or redistributed with this package. They are free to use, but
+Chikin (sergeychikin.ru). The SVGs are checked in under `public/365/` (each
+under its original path within the set) and served from this repo's GitHub
+Pages site; sergeychikin.ru cookie-gates direct requests, so hot-linking them
+from the source domain no longer works. The icons are free to use, but
 **commercial use requires a license from the author** — see the terms at
-[sergeychikin.ru/365](https://sergeychikin.ru/365/). If the site is
-unreachable, those tabs show empty avatars; roster tokens are unaffected.
-Maps you export reference the icons by URL and never inline them.
+[sergeychikin.ru/365](https://sergeychikin.ru/365/) and the Chikin Icons
+section of [LICENSE](LICENSE). Maps you export reference the icons by URL and
+never inline them.
 
 The categories in `src/battle-mat/registry.js` are hand-picked from the pack.
 To browse it or add a category, use the scraper `scripts/chikin-catalog.mjs`,
-which parses the icon index into `{ category, path, ru, en, name }` records:
+which parses the icon index into `{ category, path, ru, en, name }` records
+(note: the site's cookie gate means the scraper and any icon download need a
+valid `realauth` cookie — obtain one by opening sergeychikin.ru in a browser
+and pass it as a `Cookie: realauth=...` header; new icons go into
+`public/365/<original path>`):
 
 ```sh
 node scripts/chikin-catalog.mjs --list                 # categories + counts
@@ -531,3 +537,10 @@ roll(poolToParsed([20, 6, 6], 2)); // build a roll from a pool of die sizes
 
 Modern evergreen browsers (custom elements v1, Shadow DOM, SVG, `color-mix`).
 Uses `crypto.getRandomValues` for fair rolls, falling back to `Math.random`.
+
+## License
+
+Free for non-commercial use — see [LICENSE](LICENSE). Commercial use of the
+code requires permission from the author (Ramil Karimov, ramil1017@gmail.com);
+commercial use of the bundled Chikin Icons requires a license from
+[Sergey Chikin](https://sergeychikin.ru/365/).
