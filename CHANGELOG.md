@@ -19,6 +19,11 @@
   shows through its cell and stays clickable (HUD mode).
   `openBattleMat()` gained `labels` and `show` options; the pool moved from
   a floating card to a full-width row.
+- Token card: clicking a token on the map (select tool) or an
+  initiative-tracker row opens a small card next to it with the combatant's
+  name, HP, AC and initiative, plus a ring-color picker (six JSON Canvas
+  presets + kind default; stored as the node's `color`, synced to the
+  tracker and carried by exports).
 - Token name plates: hovering a token shows its name (replacing the native
   <title> tooltips); hold Shift to show every name on the map, or pin them
   with the new tag button in the tools bar (the touch path). Plates are

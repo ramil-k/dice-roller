@@ -149,6 +149,7 @@ const PANEL_CSS = `
   .trk-remove:hover { color: var(--bm-trk-accent); background: color-mix(in srgb, var(--bm-trk-accent) 14%, transparent); }
   .trk-remove:focus-visible { outline: 2px solid var(--bm-trk-accent); outline-offset: 1px; }
 
+  .trk-list li.trk-clickable { cursor: pointer; }
   .trk-empty { padding: 0.9rem; color: var(--bm-trk-muted); }
 `;
 
@@ -172,7 +173,9 @@ export const DEFAULT_LABELS = {
 // Build the tracker UI inside `container` (the widget's panel element, in the
 // host element's shadow root). Returns { dispose } — unsubscribes and empties
 // the container. `labels` overrides DEFAULT_LABELS (localization).
-export function buildTracker(container, { storageKey = DEFAULT_KEY, labels = {} } = {}) {
+// `onCombatantClick(nodeId, clientX, clientY)` (optional) fires on a click on
+// a row's non-interactive parts — the battle screen opens the token card.
+export function buildTracker(container, { storageKey = DEFAULT_KEY, labels = {}, onCombatantClick } = {}) {
   const L = { ...DEFAULT_LABELS, ...labels };
   const store = getStore(storageKey);
   const root = container.getRootNode();
@@ -240,6 +243,14 @@ export function buildTracker(container, { storageKey = DEFAULT_KEY, labels = {} 
     for (const node of order) {
       const row = el('li');
       row.classList.toggle('active', node.id === combat.activeNodeId);
+      if (onCombatantClick) {
+        row.classList.add('trk-clickable');
+        row.addEventListener('click', (e) => {
+          // inputs, buttons and the roll chip keep their own click behavior
+          if (e.target.closest?.('input, button, roll-dice')) return;
+          onCombatantClick(node.id, e.clientX, e.clientY);
+        });
+      }
       const kindColor = node.color
         ? resolveColor(node.color)
         : KIND_COLOR[node[EXT].tokenKind] ?? KIND_COLOR.player;

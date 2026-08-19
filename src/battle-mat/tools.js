@@ -12,6 +12,8 @@
 //   getTool(), getColor(), setStatus(text)
 //   placeToken(entry, wx, wy)      — create a pool token at a world point
 //   onPlacingChange(entry | null)  — pool/cursor UI feedback
+//   onNodeClick?(id, clientX, clientY) — select-tool click (no movement) on a
+//                                        node; the overlay opens its card
 
 import { screenToWorld, panBy, zoomAt, pinchUpdate } from './viewport.js';
 import { snapTokenOrigin, measure, formatMeasure } from './grid.js';
@@ -255,6 +257,9 @@ export function attachTools(ctx) {
       if (drag.pos) {
         moveNode(ctx.getDoc(), drag.id, drag.pos.x, drag.pos.y);
         ctx.commit();
+      } else {
+        // never moved: a plain click on the node, not a drag
+        ctx.onNodeClick?.(drag.id, e.clientX, e.clientY);
       }
       drag = null;
       setMode('idle');

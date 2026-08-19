@@ -22,6 +22,8 @@ import { ICONS } from './icons.js';
 import {
   emptyDoc,
   getExt,
+  getNode,
+  nodeKind,
   addNode,
   makeToken,
   makeImage,
@@ -33,7 +35,16 @@ import {
 } from './canvas-doc.js';
 import { clampCellSize, snapTokenOrigin } from './grid.js';
 import { getStore, DEFAULT_KEY } from './store.js';
-import { reserveCombatants, placeCombatant, instanceName } from './combat.js';
+import {
+  reserveCombatants,
+  placeCombatant,
+  instanceName,
+  getHp,
+  getHpMax,
+  getAc,
+  getInitiative,
+  getInitMod,
+} from './combat.js';
 import { getAdjectives } from './adjectives.js';
 import { CATEGORIES, iconUrl } from './registry.js';
 import { buildScene, render, applyViewport, updateGrid } from './view.js';
@@ -161,7 +172,7 @@ const OVERLAY_CSS = `
       "tracker toolbar";
   }
   .mat-root:not([data-show-map]) { pointer-events: none; }
-  .mat-root:not([data-show-map]) :is(.screen-toolbar, .pool, .tracker-area) { pointer-events: auto; }
+  .mat-root:not([data-show-map]) :is(.screen-toolbar, .pool, .tracker-area, .token-card) { pointer-events: auto; }
   .mat-root:not([data-show-map]) .map-area { display: none; }
   .mat-root:not([data-show-pool]) .pool { display: none; }
   .mat-root:not([data-show-tracker]) .tracker-area { display: none; }
@@ -395,6 +406,45 @@ const OVERLAY_CSS = `
   }
   .settings input[type="checkbox"] { width: 1rem; height: 1rem; accent-color: var(--bm-accent); }
 
+  /* --- token card (opened by clicking a token or a tracker row) ------------ */
+  .token-card {
+    position: absolute;
+    width: max-content;
+    max-width: 16rem;
+    background: var(--bm-surface);
+    border: 1px solid var(--bm-edge);
+    border-radius: 0.7rem;
+    box-shadow: 0 10px 30px rgb(0 0 0 / 0.4);
+    padding: 0.65rem 0.8rem;
+    font-size: 0.85rem;
+  }
+  .token-card .tc-head {
+    display: flex;
+    align-items: center;
+    gap: 0.45em;
+    font-weight: 700;
+    margin-bottom: 0.4rem;
+  }
+  .token-card .tc-dot { flex: 0 0 auto; width: 0.65em; height: 0.65em; border-radius: 50%; }
+  .token-card .tc-stats { display: flex; gap: 0.9em; margin-bottom: 0.55rem; }
+  .token-card .tc-stat { display: inline-flex; align-items: baseline; gap: 0.3em; }
+  .token-card .tc-label { color: var(--bm-muted); font-size: 0.85em; }
+  .token-card .tc-value { font-weight: 650; font-variant-numeric: tabular-nums; }
+  .token-card .tc-swatches { display: flex; gap: 0.35rem; }
+  .token-card .tc-swatches button {
+    width: 1.15rem;
+    height: 1.15rem;
+    padding: 0;
+    border: 2px solid transparent;
+    border-radius: 50%;
+    cursor: pointer;
+  }
+  .token-card .tc-swatches button[aria-pressed="true"] { border-color: var(--bm-fg); }
+  .token-card .tc-swatches button:focus-visible { outline: 2px solid var(--bm-accent); outline-offset: 2px; }
+  /* the reset swatch shows the kind color it falls back to, dashed to differ */
+  .token-card .tc-swatches .tc-reset { border: 2px dashed var(--bm-muted); }
+  .token-card .tc-swatches .tc-reset[aria-pressed="true"] { border-color: var(--bm-fg); }
+
   /* --- status + close ------------------------------------------------------ */
   .status {
     position: absolute;
@@ -475,6 +525,7 @@ class BattleMatOverlay {
   }
 
   close() {
+    this._closeCard();
     this.tools?.detach();
     this._tracker?.dispose();
     this._tracker = null;
@@ -510,6 +561,7 @@ class BattleMatOverlay {
   // ---- shell ---------------------------------------------------------------
 
   _buildShell() {
+    this._closeCard(); // reopened: drop the stale card and its dismiss listener
     this._tracker?.dispose(); // reopened: drop the previous tracker's store hook
     this._tracker = null;
     for (const child of Array.from(this.root.children)) {
@@ -541,7 +593,11 @@ class BattleMatOverlay {
 
     // buildTracker injects its stylesheet into container.getRootNode(), so it
     // must run after the tracker area is attached under this shadow root.
-    this._tracker = buildTracker(this._trackerEl, { storageKey: this.storageKey, labels: this.labels });
+    this._tracker = buildTracker(this._trackerEl, {
+      storageKey: this.storageKey,
+      labels: this.labels,
+      onCombatantClick: (id, x, y) => this._openCard(id, x, y),
+    });
 
     this._wireTools();
     this._wireImageDrop();
@@ -569,6 +625,118 @@ class BattleMatOverlay {
       this._hoverLabel?.removeAttribute('data-hover');
       this._hoverLabel = null;
     });
+  }
+
+  // ---- token card ------------------------------------------------------------
+
+  // A small card next to a clicked token (on the map) or tracker row: the
+  // combatant's stats at a glance and a ring-color picker. One card at a
+  // time; a second click on the same token toggles it away.
+  _openCard(id, cx, cy) {
+    if (this._cardId === id && this._card) {
+      this._closeCard();
+      return;
+    }
+    this._closeCard();
+    const node = getNode(this.store.doc, id);
+    if (!node) return;
+
+    const card = el('div', 'token-card');
+    this._card = card;
+    this._cardId = id;
+    this._renderCard(node);
+    this._rootEl.appendChild(card);
+
+    // next to the click point, clamped into the viewport
+    const pad = 8;
+    const r = card.getBoundingClientRect();
+    card.style.left = `${Math.max(pad, Math.min(cx + 12, window.innerWidth - r.width - pad))}px`;
+    card.style.top = `${Math.max(pad, Math.min(cy + 12, window.innerHeight - r.height - pad))}px`;
+
+    // any press outside dismisses it — except on tokens and tracker rows,
+    // whose own click handlers decide (toggle same / move to another)
+    this._cardDismiss = (e) => {
+      const t = e.composedPath()[0];
+      if (!(t instanceof Element)) return;
+      if (card.contains(t) || t.closest('.token') || t.closest('.trk-list li')) return;
+      this._closeCard();
+    };
+    this.root.addEventListener('pointerdown', this._cardDismiss, true);
+  }
+
+  _closeCard() {
+    if (!this._card) return;
+    this._card.remove();
+    this._card = null;
+    this._cardId = null;
+    this.root.removeEventListener('pointerdown', this._cardDismiss, true);
+    this._cardDismiss = null;
+  }
+
+  // Re-read the node on store changes so tracker edits show up live; the
+  // card dies with its combatant.
+  _refreshCard() {
+    if (!this._card) return;
+    const node = getNode(this.store.doc, this._cardId);
+    if (!node) this._closeCard();
+    else this._renderCard(node);
+  }
+
+  _renderCard(node) {
+    const card = this._card;
+    const ext = node[EXT];
+    const L = { hp: 'HP', ac: 'AC', init: 'Init', ...this.labels };
+    const kindColor = ext.tokenKind === 'monster' ? 'var(--bm-token-monster)' : 'var(--bm-token-player)';
+    card.replaceChildren();
+
+    const head = el('div', 'tc-head');
+    const dot = el('span', 'tc-dot');
+    dot.style.background = node.color ? resolveColor(node.color) : kindColor;
+    head.append(dot, el('span', 'tc-name', ext.name || 'Token'));
+    card.appendChild(head);
+
+    const stats = el('div', 'tc-stats');
+    const stat = (label, value) => {
+      const s = el('span', 'tc-stat');
+      s.append(el('span', 'tc-label', label), el('span', 'tc-value', value));
+      stats.appendChild(s);
+    };
+    const hpMax = getHpMax(node);
+    stat(L.hp, `${getHp(node) ?? '–'}${hpMax != null ? `/${hpMax}` : ''}`);
+    stat(L.ac, `${getAc(node) ?? '–'}`);
+    const mod = getInitMod(node);
+    stat(L.init, `${getInitiative(node) ?? '–'}${mod ? ` (${mod > 0 ? '+' : ''}${mod})` : ''}`);
+    card.appendChild(stats);
+
+    // ring color: the six JSON Canvas presets plus "kind default" (dashed)
+    const swatches = el('div', 'tc-swatches');
+    swatches.setAttribute('role', 'group');
+    swatches.setAttribute('aria-label', 'Token color');
+    for (const { preset, label } of PALETTE) {
+      const b = el('button');
+      b.type = 'button';
+      b.setAttribute('aria-label', label);
+      b.title = label;
+      b.style.background = resolveColor(preset);
+      b.setAttribute('aria-pressed', String(node.color === preset));
+      b.addEventListener('click', () => {
+        node.color = preset;
+        this._commit(); // change event re-renders map, tracker and this card
+      });
+      swatches.appendChild(b);
+    }
+    const reset = el('button', 'tc-reset');
+    reset.type = 'button';
+    reset.setAttribute('aria-label', 'Default color');
+    reset.title = 'Default color';
+    reset.style.background = kindColor;
+    reset.setAttribute('aria-pressed', String(!node.color));
+    reset.addEventListener('click', () => {
+      delete node.color;
+      this._commit();
+    });
+    swatches.appendChild(reset);
+    card.appendChild(swatches);
   }
 
   // The right toolbar column: the map tools group at the top (which also
@@ -954,6 +1122,11 @@ class BattleMatOverlay {
         if (entry && this._placingBtn) this._placingBtn.setAttribute('aria-pressed', 'true');
         this.svg.setAttribute('data-mode', entry ? 'placing' : 'idle');
       },
+      onNodeClick: (id, x, y) => {
+        // the card is for combatants; clicks on strokes/images just deselect
+        if (nodeKind(getNode(this.store.doc, id)) === 'token') this._openCard(id, x, y);
+        else this._closeCard();
+      },
     });
     this._setTool(this.tool);
   }
@@ -1028,9 +1201,11 @@ class BattleMatOverlay {
     } else if (e.full) {
       this._syncFromDoc();
       this._rebuildPool();
+      this._closeCard(); // the doc was replaced wholesale — the node ref is gone
     } else {
       render(this.refs, this.store.doc);
       this._rebuildPool();
+      this._refreshCard();
     }
   }
 
@@ -1177,6 +1352,11 @@ class BattleMatOverlay {
     if (e.key === 'Escape') {
       // cancel the in-flight interaction first; close only from a quiet state
       if (this.tools.cancelActive()) {
+        e.stopPropagation();
+        return;
+      }
+      if (this._card) {
+        this._closeCard();
         e.stopPropagation();
         return;
       }

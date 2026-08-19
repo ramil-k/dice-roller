@@ -232,6 +232,12 @@ token when it is placed and surface in the initiative tracker.
   2048px are downscaled before storing (they persist as data URIs).
 - **Grid settings** — cell size, offset X/Y (to align the grid with an attached
   map image), feet per cell, grid visibility, and snap-to-grid.
+- **Token card** — click a token with the select tool (without dragging), or
+  click an initiative-tracker row, to open a small card next to it: name, HP,
+  AC, initiative, and a ring-color picker (the six JSON Canvas preset colors
+  plus the kind default). The color is stored as the node's spec-level
+  `color`, so it survives export and syncs to the tracker markers. Click
+  elsewhere or press Escape to dismiss.
 - **Token names** — hovering a token shows its name plate (there are no native
   tooltips); hold Shift to show every plate at once, or pin them with the
   tools-bar tag button (the touch-device path). Plates are one size for every
