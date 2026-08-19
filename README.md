@@ -128,7 +128,7 @@ import '@ramilkos/roll-dice/battle-toolbar';
 | `storage-key` | `localStorage` key of the shared encounter                   | `battle-mat-canvas` |
 | `roster`      | JSON array of extra pool tokens; the property wins           | `[]`                |
 | `dice`        | die sizes the builder tray offers, e.g. `"6 20"`             | `4 6 8 10 12 20`    |
-| `label-*`     | localized UI strings for the dock, the battle screen toolbar and the tracker area: `label-map`, `label-pool`, `label-dice`, `label-close` plus the tracker's `label-title`, `label-round`, `label-next`, `label-fill`, `label-reset`, `label-resetconfirm`, `label-empty`, `label-name`, `label-hp`, `label-ac`, `label-init`, `label-remove` | English |
+| `label-*`     | localized UI strings for the dock, the battle screen toolbar and the tracker area: `label-map`, `label-pool`, `label-dice` plus the tracker's `label-title`, `label-round`, `label-next`, `label-fill`, `label-reset`, `label-resetconfirm`, `label-empty`, `label-name`, `label-hp`, `label-ac`, `label-init`, `label-remove` | English |
 
 Unlike the other widgets the dock pins itself flush into the corner
 (`position: fixed; right: 0; bottom: 0`, only the top-left corner rounded);
@@ -148,13 +148,14 @@ The battle screen is a full-viewport CSS grid: stacked on the left, the
 **map** (a pannable, zoomable square grid where you drag player and monster
 tokens from the pool, draw, erase, measure, attach map images), the **token
 pool** row and the **initiative tracker** area (the same panel
-`<initiative-tracker>` shows, embedded; the pool and tracker rows take their
-natural height, the map absorbs the rest) — and a toolbar column on the right,
-in the same corner as the dock. The column has the map tools group at its top
+`<initiative-tracker>` shows, embedded; the pool row takes its natural
+height, the tracker row at least its content and half the map's share of the
+free space, the map absorbs the rest) — and a toolbar column on the right, in
+the same corner as the dock. The column has the map tools group at its top
 and, bottom-aligned, dock-style controls: toggles for the three areas (the
-choice persists per device in the `battle-mat-ui` `localStorage` key), a d20
-button that opens the dice roller on top of the screen, and a close button
-back to the page at the very bottom.
+choice persists per device in the `battle-mat-ui` `localStorage` key) and a
+d20 button that opens the dice roller on top of the screen. Escape closes the
+screen and returns to the page.
 
 `<battle-toolbar>` above is the usual way in; the standalone `<battle-mat>`
 button opens the same screen on its map area:

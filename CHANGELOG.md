@@ -10,10 +10,10 @@
   stacked on the left (pool and tracker rows at their natural height) and a
   toolbar column on the right — the map tools group at its top and, aligned
   to the bottom like the page dock, dock-style controls: area toggles
-  (persisted per device in the new `battle-mat-ui` localStorage key), a d20
-  button that opens the dice roller on top, and the close button at the very
-  bottom. `openBattleMat()` gained `labels` and `show` options; the pool
-  moved from a floating card to a full-width row.
+  (persisted per device in the new `battle-mat-ui` localStorage key) and a
+  d20 button that opens the dice roller on top; Escape closes the screen.
+  `openBattleMat()` gained `labels` and `show` options; the pool moved from
+  a floating card to a full-width row.
 - The dice overlay now moves focus into itself on open, so a document-level
   Escape/Tab is handled by the topmost surface only (Escape over the battle
   screen closes just the dice).

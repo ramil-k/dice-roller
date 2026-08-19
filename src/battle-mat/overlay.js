@@ -6,8 +6,8 @@
 // dock): the map tools group at its top and, bottom-aligned, dock-style
 // buttons that toggle the map, the token pool and the initiative tracker
 // areas (state persisted in the battle-mat-ui localStorage key), plus a dice
-// button that opens the roll-dice builder overlay on top of everything and a
-// close button back to the page.
+// button that opens the roll-dice builder overlay on top of everything.
+// Escape closes the screen (no close button).
 // Mirrors the DiceOverlay architecture in roll-dice.js — a detached host
 // element with its own shadow root, promoted into the top layer via the
 // Popover API where available, with a fixed-position + max-z-index fallback
@@ -73,7 +73,6 @@ const SCREEN_LABELS = {
   pool: 'Token pool',
   title: 'Initiative',
   dice: 'Roll dice',
-  close: 'Close battle screen',
 };
 
 const TOOLS = [
@@ -136,15 +135,17 @@ const OVERLAY_CSS = `
 
   /* The battle screen grid: the map / pool / tracker areas stacked on the
      left, the toolbar column on the right (same corner as the page dock).
-     Area visibility is toggled via data-show-* attributes; with the map off,
-     its 1fr row collapses and the flexible space goes to the tracker. */
+     Area visibility is toggled via data-show-* attributes; with the map off
+     its 1fr row collapses. The tracker row is minmax(max-content, 0.5fr):
+     at least its content, and half the map's share of the free space (an fr
+     value is only valid as the max in minmax()). */
   .mat-root {
     position: absolute;
     inset: 0;
     animation: bm-fade 0.15s ease;
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-rows: minmax(0, 1fr) max-content max-content;
+    grid-template-rows: 1fr max-content minmax(max-content, 0.5fr);
     grid-template-areas:
       "map toolbar"
       "pool toolbar"
@@ -170,6 +171,11 @@ const OVERLAY_CSS = `
     background: var(--bm-surface);
     border-left: 1px solid var(--bm-edge);
     overflow-y: auto;
+    /* the column spans all three rows — a definite zero height keeps its
+       content out of the rows' intrinsic (max-content) sizing, min-height
+       then stretches it back to the full grid area */
+    height: 0;
+    min-height: 100%;
   }
   /* the map tools sit at the top; the spacer pushes the dock-style controls
      to the bottom of the column */
@@ -195,7 +201,6 @@ const OVERLAY_CSS = `
   .screen-toolbar > .b-pool { --tb-accent: #e0a94a; }
   .screen-toolbar > button[aria-pressed="true"] { color: var(--tb-accent); }
   .screen-toolbar > .b-dice { color: #7d97e8; }
-  .screen-toolbar > .b-close:hover { color: var(--bm-fg); }
   .screen-toolbar > button .icon { width: 1.5rem; height: 1.5rem; }
 
   /* --- map area -------------------------------------------------------------- */
@@ -507,8 +512,8 @@ class BattleMatOverlay {
 
   // The right toolbar column: the map tools group at the top, then —
   // bottom-aligned like the page dock — the area toggles (tracker, map, pool:
-  // the dock's button order first), the dice roller launcher, and the close
-  // button at the very bottom.
+  // the dock's button order first) and the dice roller launcher. No close
+  // button: Escape leaves the screen.
   _buildScreenToolbar() {
     const L = { ...SCREEN_LABELS, ...this.labels };
     const bar = el('div', 'screen-toolbar');
@@ -542,14 +547,6 @@ class BattleMatOverlay {
     dice.innerHTML = ICONS.dice;
     dice.addEventListener('click', () => this._openDice(dice));
     bar.appendChild(dice);
-
-    const close = el('button', 'b-close');
-    close.type = 'button';
-    close.setAttribute('aria-label', L.close);
-    close.title = L.close;
-    close.innerHTML = ICONS.close;
-    close.addEventListener('click', () => this.close());
-    bar.appendChild(close);
     return bar;
   }
 

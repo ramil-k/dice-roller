@@ -22,11 +22,11 @@
 //                same format as <battle-mat>'s roster (property wins)
 //   dice         space/comma-separated die sizes the dice tray offers
 //   label-*      localized UI strings for the dock, the battle screen toolbar
-//                and the tracker area: label-map, label-pool, label-dice,
-//                label-close plus the tracker's label-title, label-round,
-//                label-next, label-fill, label-reset, label-resetconfirm,
-//                label-empty, label-name, label-hp, label-ac, label-init,
-//                label-remove (defaults are English)
+//                and the tracker area: label-map, label-pool, label-dice
+//                plus the tracker's label-title, label-round, label-next,
+//                label-fill, label-reset, label-resetconfirm, label-empty,
+//                label-name, label-hp, label-ac, label-init, label-remove
+//                (defaults are English)
 
 const DOCK_CSS = `
   :host {
@@ -110,7 +110,7 @@ const DIE_ICON = `
 // label-* attribute suffixes → keys in the labels object handed to the battle
 // screen (attribute names are lowercase; resetConfirm maps from resetconfirm).
 const LABEL_KEYS = [
-  'map', 'pool', 'dice', 'close',
+  'map', 'pool', 'dice',
   'title', 'round', 'next', 'fill', 'reset', 'resetConfirm', 'empty',
   'name', 'hp', 'ac', 'init', 'remove',
 ];
