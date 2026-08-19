@@ -4,7 +4,9 @@
 
 - `<battle-toolbar>` — a new always-visible vertical dock pinned to the
   bottom-right corner with initiative, battle map and dice buttons (the
-  recommended page-level entry point; localizable via `label-*`).
+  recommended page-level entry point; localizable via `label-*`). The
+  initiative button opens the tracker HUD without the map (`openBattleMat()`
+  gained a `hide` option alongside `show`).
 - The battle-mat overlay became the **battle screen**: a full-viewport CSS
   grid with the map, the token pool and the embedded initiative tracker
   stacked on the left (pool and tracker rows at their natural height) and a

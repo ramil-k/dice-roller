@@ -107,10 +107,11 @@ element: `--rd-log-bg`, `--rd-log-fg`, `--rd-log-muted`, `--rd-log-accent`,
 
 The recommended way to put the battle widgets on a page: an always-visible
 vertical dock pinned to the bottom-right corner with three buttons —
-initiative, battle map, dice. The first two open the shared
-[battle screen](#battle-mat--the-battle-screen) with that area visible; the
-dice button opens the [freeform roller](#roll-any-dice--freeform-roller)
-overlay directly.
+initiative, battle map, dice. Initiative opens the shared
+[battle screen](#battle-mat--the-battle-screen) as a tracker HUD over the
+page (map hidden); the map button opens it with the map area up; the dice
+button opens the [freeform roller](#roll-any-dice--freeform-roller) overlay
+directly.
 
 ```html
 <script type="module"

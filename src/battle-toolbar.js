@@ -1,8 +1,9 @@
 // <battle-toolbar> — the always-visible dock: a vertical bar flush in the
 // bottom-right corner (only its top-left corner rounded) with three buttons
-// (initiative, battle map, dice). The first two open the shared battle screen
-// (overlay.js) with that area visible; the dice button opens the roll-dice
-// builder overlay directly.
+// (initiative, battle map, dice). Initiative opens the shared battle screen
+// (overlay.js) as a tracker HUD over the page (map hidden); the map button
+// opens it with the map area up; the dice button opens the roll-dice builder
+// overlay directly.
 //
 // This module is the *eager* half and deliberately imports nothing from the
 // rest of the package: the battle screen and the dice overlay both load via
@@ -135,8 +136,10 @@ export class BattleToolbar extends HTMLElement {
       return btn;
     };
     const L = this._labels();
-    button('b-tracker', TRACKER_ICON, L.title ?? 'Initiative tracker', (btn) => this._openScreen(btn, 'tracker'));
-    button('b-mat', MAT_ICON, L.map ?? 'Battle map', (btn) => this._openScreen(btn, 'map'));
+    // Initiative opens the tracker as a HUD over the page (map hidden); the
+    // map button brings the map area up.
+    button('b-tracker', TRACKER_ICON, L.title ?? 'Initiative tracker', (btn) => this._openScreen(btn, { show: 'tracker', hide: 'map' }));
+    button('b-mat', MAT_ICON, L.map ?? 'Battle map', (btn) => this._openScreen(btn, { show: 'map' }));
     button('b-dice', DIE_ICON, L.dice ?? 'Roll dice', (btn) => this._openDice(btn));
   }
 
@@ -182,7 +185,7 @@ export class BattleToolbar extends HTMLElement {
   // Both launchers load their implementation on first use; the button is
   // disabled while the chunk loads and re-enabled on failure so a transient
   // network error is retryable with another click.
-  async _openScreen(btn, show) {
+  async _openScreen(btn, { show, hide }) {
     if (this._loading) return;
     this._loading = true;
     btn.setAttribute('disabled', '');
@@ -194,6 +197,7 @@ export class BattleToolbar extends HTMLElement {
         storageKey: this.getAttribute('storage-key') ?? 'battle-mat-canvas',
         labels: this._labels(),
         show,
+        hide,
       });
     } catch (err) {
       console.error('battle-toolbar: failed to load the battle screen module', err);

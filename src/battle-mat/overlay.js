@@ -420,17 +420,24 @@ class BattleMatOverlay {
   // `labels` localizes the screen toolbar and the tracker area (see
   // SCREEN_LABELS and tracker.js DEFAULT_LABELS); `show` names an area
   // ('map' | 'pool' | 'tracker') that must be visible on open — the dock
-  // button the user came in through.
-  open({ opener, roster = [], storageKey = DEFAULT_KEY, labels = {}, show } = {}) {
+  // button the user came in through — and `hide` one that must not be (the
+  // initiative button opens the tracker as a HUD without the map).
+  open({ opener, roster = [], storageKey = DEFAULT_KEY, labels = {}, show, hide } = {}) {
     this.opener = opener ?? null;
     this.roster = roster;
     this.storageKey = storageKey;
     this.labels = labels;
     this._ui = loadUiState();
+    let uiChanged = false;
     if (show && AREAS.includes(show) && !this._ui[show]) {
       this._ui[show] = true;
-      saveUiState(this._ui);
+      uiChanged = true;
     }
+    if (hide && AREAS.includes(hide) && this._ui[hide]) {
+      this._ui[hide] = false;
+      uiChanged = true;
+    }
+    if (uiChanged) saveUiState(this._ui);
     // the encounter document is shared (initiative tracker, add-to-battle) —
     // all edits flow through the per-key store, re-renders through its events
     this.store = getStore(storageKey);
