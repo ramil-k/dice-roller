@@ -38,14 +38,17 @@ export function buildScene(svg) {
   const images = svgEl('g', { class: 'layer-images' });
   const drawings = svgEl('g', { class: 'layer-drawings' });
   const tokens = svgEl('g', { class: 'layer-tokens' });
+  // name plates live above every token so a neighboring token's image never
+  // covers them
+  const labels = svgEl('g', { class: 'layer-labels' });
   const preview = svgEl('g', { class: 'layer-preview' });
   const ruler = svgEl('g', { class: 'layer-ruler' });
   ruler.setAttribute('display', 'none');
 
-  world.append(gridRect, images, drawings, tokens, preview, ruler);
+  world.append(gridRect, images, drawings, tokens, labels, preview, ruler);
   svg.append(defs, world);
 
-  return { svg, world, pattern, patternPath, gridRect, images, drawings, tokens, preview, ruler };
+  return { svg, world, pattern, patternPath, gridRect, images, drawings, tokens, labels, preview, ruler };
 }
 
 export function applyViewport(refs, vp) {
@@ -64,18 +67,22 @@ export function updateGrid(refs, grid) {
   refs.gridRect.setAttribute('display', grid.visible ? 'inline' : 'none');
 }
 
-// Name plate under the token, shown while Shift is held (the tools attach a
-// data-labels attribute on the svg; CSS keys visibility off it). Lives inside
-// the token's group so drags move it along. Sized relative to the token so it
-// scales with the world zoom like everything else.
+// Name plate under the token: shown while Shift is held, pinned via the tools
+// toggle, or on token hover (overlay.js keys CSS visibility off data-labels /
+// data-labels-shift on the svg and data-hover on the label). One size for
+// every token regardless of its footprint, left-aligned with the token's
+// edge. Lives in the labels layer (above all tokens, so neighbors never cover
+// it); moveNodeEl keeps it in sync during drags via data-label-for.
+const LABEL_FONT = 16; // world units — scales with the zoom, not the token
+
 function tokenLabel(node) {
-  const size = node.width;
-  const fontSize = Math.max(16, size * 0.3);
   const text = svgEl('text', {
     class: 'token-label',
-    x: size / 2,
-    y: size + fontSize,
-    'font-size': fontSize,
+    'data-label-for': node.id,
+    transform: `translate(${node.x} ${node.y})`,
+    x: 0,
+    y: node.height + LABEL_FONT,
+    'font-size': LABEL_FONT,
   });
   text.textContent = node[EXT].name || 'Token';
   return text;
@@ -98,10 +105,10 @@ function renderToken(node) {
   // token circle — clip to the ring and cover. The built-in registry icons
   // are transparent line-art and read better inset and fully visible, so they
   // keep the padded contain fit.
+  // no <title>: the name plate in the labels layer doubles as the tooltip
+  // (shown on hover), so a native browser tooltip would be redundant
   const parts = [ring];
-  const title = svgEl('title');
-  title.textContent = ext.name || 'Token';
-  if (!node.url) return [ring, title];
+  if (!node.url) return parts;
 
   if (ext.source === 'registry') {
     parts.push(svgEl('image', {
@@ -132,7 +139,6 @@ function renderToken(node) {
     ringTop.style.fill = 'none';
     parts.push(ringTop);
   }
-  parts.push(title);
   return parts;
 }
 
@@ -194,6 +200,7 @@ export function render(refs, doc) {
   refs.images.replaceChildren();
   refs.drawings.replaceChildren();
   refs.tokens.replaceChildren();
+  refs.labels.replaceChildren();
 
   for (const node of doc.nodes) {
     const kind = nodeKind(node);
@@ -203,8 +210,9 @@ export function render(refs, doc) {
     const g = svgEl('g', { 'data-id': node.id, transform: `translate(${node.x} ${node.y})` });
     if (kind === 'token') {
       g.classList.add('token');
-      g.append(...renderToken(node), tokenLabel(node));
+      g.append(...renderToken(node));
       refs.tokens.appendChild(g);
+      refs.labels.appendChild(tokenLabel(node));
     } else if (kind === 'image') {
       g.append(
         svgEl('image', {
@@ -228,9 +236,12 @@ export function render(refs, doc) {
 }
 
 // Cheap per-frame position update while dragging; render() re-syncs on commit.
+// The token's name plate lives in the labels layer, so drag it along too.
 export function moveNodeEl(refs, id, x, y) {
   const g = refs.world.querySelector(`[data-id="${CSS.escape(id)}"]`);
   if (g) g.setAttribute('transform', `translate(${x} ${y})`);
+  const label = refs.labels.querySelector(`[data-label-for="${CSS.escape(id)}"]`);
+  if (label) label.setAttribute('transform', `translate(${x} ${y})`);
 }
 
 // Ruler overlay: a line with end ticks and a floating label. The label's

@@ -241,20 +241,23 @@ const OVERLAY_CSS = `
   .foreign-box { fill: rgb(from var(--bm-fg) r g b / 0.05); stroke: var(--bm-muted); stroke-dasharray: 6 4; }
   .foreign-label { fill: var(--bm-muted); font-size: 13px; }
 
-  /* Token name plates: hidden by default, shown while Shift is held
-     (data-labels-shift, set by tools.js) or via the tools-bar toggle
-     (data-labels — the mobile path, no modifier keys there). */
+  /* Token name plates (left-aligned with the token, in the labels layer
+     above every token): hidden by default, shown while Shift is held
+     (data-labels-shift, set by tools.js), via the tools-bar toggle
+     (data-labels — the mobile path, no modifier keys there), or on token
+     hover (data-hover, set in _wireTokenHover — replaces native <title>
+     tooltips). */
   .token-label {
     fill: var(--bm-fg);
     font-weight: 650;
     paint-order: stroke;
     stroke: rgb(from var(--bm-bg) r g b / 0.9);
     stroke-width: 0.25em;
-    text-anchor: middle;
     pointer-events: none;
     display: none;
   }
-  .mat[data-labels] .token-label, .mat[data-labels-shift] .token-label { display: inline; }
+  .mat[data-labels] .token-label, .mat[data-labels-shift] .token-label,
+  .token-label[data-hover] { display: inline; }
 
   /* --- token pool (a full-width grid row) ----------------------------------- */
   .pool {
@@ -542,6 +545,30 @@ class BattleMatOverlay {
 
     this._wireTools();
     this._wireImageDrop();
+    this._wireTokenHover();
+  }
+
+  // Hovering a token shows its name plate (the replacement for the native
+  // <title> tooltips the tokens used to carry).
+  _wireTokenHover() {
+    const labelFor = (target) => {
+      const g = target.closest?.('.token');
+      if (!g) return null;
+      return this.refs.labels.querySelector(`[data-label-for="${CSS.escape(g.getAttribute('data-id'))}"]`);
+    };
+    this.refs.tokens.addEventListener('pointerover', (e) => {
+      const label = labelFor(e.target);
+      if (label === this._hoverLabel) return;
+      this._hoverLabel?.removeAttribute('data-hover');
+      label?.setAttribute('data-hover', '');
+      this._hoverLabel = label;
+    });
+    this.refs.tokens.addEventListener('pointerout', (e) => {
+      // only clear when actually leaving the token (not moving between its parts)
+      if (labelFor(e.relatedTarget ?? document.body)) return;
+      this._hoverLabel?.removeAttribute('data-hover');
+      this._hoverLabel = null;
+    });
   }
 
   // The right toolbar column: the map tools group at the top (which also
