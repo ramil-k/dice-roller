@@ -21,7 +21,7 @@
   a floating card to a full-width row.
 - Token card: clicking a token on the map (select tool) or an
   initiative-tracker row opens a small card next to it with the combatant's
-  name, HP, AC and initiative, plus a ring-color picker (six JSON Canvas
+  name, HP, AC and initiative, plus a size row (1×1 … 4×4 cells) and a ring-color picker (six JSON Canvas
   presets + kind default; stored as the node's `color`, synced to the
   tracker and carried by exports). Node clicks tolerate up to 5px of pointer
   jitter — a shaky click no longer turns into a micro-drag.

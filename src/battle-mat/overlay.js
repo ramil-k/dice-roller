@@ -434,6 +434,25 @@ const OVERLAY_CSS = `
   .token-card .tc-stat { display: inline-flex; align-items: baseline; gap: 0.3em; }
   .token-card .tc-label { color: var(--bm-muted); font-size: 0.85em; }
   .token-card .tc-value { font-weight: 650; font-variant-numeric: tabular-nums; }
+  .token-card .tc-sizes { display: flex; gap: 0.35rem; margin-bottom: 0.55rem; }
+  .token-card .tc-sizes button {
+    font: inherit;
+    font-size: 0.8em;
+    font-weight: 600;
+    padding: 0.15em 0.5em;
+    border: 1px solid var(--bm-edge);
+    border-radius: 0.45em;
+    background: transparent;
+    color: var(--bm-muted);
+    cursor: pointer;
+  }
+  .token-card .tc-sizes button:hover { color: var(--bm-fg); }
+  .token-card .tc-sizes button[aria-pressed="true"] {
+    color: var(--bm-bg);
+    background: var(--bm-accent);
+    border-color: var(--bm-accent);
+  }
+  .token-card .tc-sizes button:focus-visible { outline: 2px solid var(--bm-accent); outline-offset: 2px; }
   .token-card .tc-swatches { display: flex; gap: 0.35rem; }
   .token-card .tc-swatches button {
     width: 1.15rem;
@@ -711,6 +730,34 @@ class BattleMatOverlay {
     const mod = getInitMod(node);
     stat(L.init, `${getInitiative(node) ?? '–'}${mod ? ` (${mod > 0 ? '+' : ''}${mod})` : ''}`);
     card.appendChild(stats);
+
+    // footprint: 1×1 … 4×4 grid cells (the D&D medium/large/huge/gargantuan
+    // ladder); resizing keeps the token centered and re-snaps when snap is on
+    const sizes = el('div', 'tc-sizes');
+    sizes.setAttribute('role', 'group');
+    sizes.setAttribute('aria-label', 'Token size');
+    const grid = getExt(this.store.doc).grid;
+    const current = Math.max(1, Math.min(4, Math.round(node.width / grid.cellSize)));
+    for (const cells of [1, 2, 3, 4]) {
+      const b = el('button', null, `${cells}×${cells}`);
+      b.type = 'button';
+      b.setAttribute('aria-label', `${cells}×${cells}`);
+      b.setAttribute('aria-pressed', String(cells === current));
+      b.addEventListener('click', () => {
+        if (cells === current) return;
+        const size = grid.cellSize * cells;
+        let x = node.x + node.width / 2 - size / 2;
+        let y = node.y + node.height / 2 - size / 2;
+        if (grid.snap) ({ x, y } = snapTokenOrigin(x, y, size, grid));
+        node.x = x;
+        node.y = y;
+        node.width = size;
+        node.height = size;
+        this._commit();
+      });
+      sizes.appendChild(b);
+    }
+    card.appendChild(sizes);
 
     // ring color: the six JSON Canvas presets plus "kind default" (dashed)
     const swatches = el('div', 'tc-swatches');
