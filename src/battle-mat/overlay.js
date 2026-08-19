@@ -306,7 +306,7 @@ const OVERLAY_CSS = `
     flex: 0 0 auto;
     width: 2.9rem;
     height: 2.9rem;
-    padding: 0.3rem;
+    padding: 0;
     border: 1px solid var(--bm-edge);
     border-radius: 50%;
     background: rgb(from var(--bm-fg) r g b / 0.88);
@@ -327,7 +327,7 @@ const OVERLAY_CSS = `
     z-index: 10;
     width: 3rem;
     height: 3rem;
-    padding: 0.3rem;
+    padding: 0;
     border-radius: 50%;
     background: rgb(from var(--bm-fg) r g b / 0.88);
   }

@@ -92,6 +92,7 @@ const PANEL_CSS = `
     border-radius: 50%;
     object-fit: cover;
     border: 2px solid var(--bm-trk-edge);
+    padding: 0;
     background: var(--bm-trk-fg);
   }
   .trk-list li.active input.name { font-weight: 700; }
