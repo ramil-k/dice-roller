@@ -356,6 +356,8 @@ export function attachTools(ctx) {
         const img = el('img');
         img.src = entry.image;
         img.alt = '';
+        // photos clip to the circle like their pool avatar (registry glyphs fit inside)
+        if (entry.source !== 'registry' && !entry.art) img.classList.add('photo');
         ghost.appendChild(img);
         ctx.root.querySelector('.mat-root').appendChild(ghost);
       }

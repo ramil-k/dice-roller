@@ -316,6 +316,9 @@ const OVERLAY_CSS = `
   .avatar:hover { background: var(--bm-fg); }
   .avatar[aria-pressed="true"] { border-color: var(--bm-accent); box-shadow: 0 0 0 2px var(--bm-accent); }
   .avatar img { width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
+  /* photo avatars fill the circle (registry line art keeps the padded fit) —
+     same split the map's token rendering makes */
+  .avatar img.photo { border-radius: 50%; object-fit: cover; }
   .pool-ghost {
     position: fixed;
     transform: translate(-50%, -50%);
@@ -329,6 +332,7 @@ const OVERLAY_CSS = `
     background: rgb(from var(--bm-fg) r g b / 0.88);
   }
   .pool-ghost img { width: 100%; height: 100%; object-fit: contain; }
+  .pool-ghost img.photo { border-radius: 50%; object-fit: cover; }
 
   /* --- map tools (the top group of the screen toolbar column) ---------------
      Slightly tighter than the dock controls below so the whole column fits a
@@ -911,6 +915,8 @@ class BattleMatOverlay {
       kind: n[EXT].tokenKind ?? 'player',
       source: 'reserve',
       poolId: n.id,
+      // line-art vs photo display hint from the node's original source
+      art: n[EXT].source === 'registry',
     }));
     if (reserve.length) tabs.push({ id: 'reserve', label: 'Reserve', entries: reserve });
 
@@ -987,6 +993,7 @@ class BattleMatOverlay {
     img.src = entry.image;
     img.alt = '';
     img.loading = 'lazy';
+    if (entry.source !== 'registry' && !entry.art) img.classList.add('photo');
     btn.appendChild(img);
     btn.addEventListener('pointerdown', (e) => {
       if (e.button === 0) this.tools.startPoolDrag(entry, e);
