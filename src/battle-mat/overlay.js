@@ -310,7 +310,7 @@ const OVERLAY_CSS = `
     flex-direction: column;
     align-items: center;
     gap: 0.1rem;
-    padding: 0.3rem 0.35rem;
+    padding: 0;
   }
   .mat-root:not([data-show-map]) .tools { display: none; }
   .tools button {
