@@ -19,6 +19,10 @@
   shows through its cell and stays clickable (HUD mode).
   `openBattleMat()` gained `labels` and `show` options; the pool moved from
   a floating card to a full-width row.
+- Token name plates: hold Shift to show every token's name on the map, or pin
+  them with the new tag button in the tools bar (the touch path). The
+  token-pool toggle moved from the toolbar's bottom controls into the tools
+  bar, so the bottom mirrors the dock exactly (initiative, map, dice).
 - The dice overlay now moves focus into itself on open, so a document-level
   Escape/Tab is handled by the topmost surface only (Escape over the battle
   screen closes just the dice).

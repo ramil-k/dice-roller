@@ -208,7 +208,6 @@ const OVERLAY_CSS = `
   .screen-toolbar > button:hover { background: rgb(from var(--bm-fg) r g b / 0.08); }
   .screen-toolbar > .b-tracker { --tb-accent: #f4c430; }
   .screen-toolbar > .b-map { --tb-accent: #5fb98d; }
-  .screen-toolbar > .b-pool { --tb-accent: #e0a94a; }
   .screen-toolbar > button[aria-pressed="true"] { color: var(--tb-accent); }
   .screen-toolbar > .b-dice { color: #7d97e8; }
   .screen-toolbar > button .icon { width: 1.5rem; height: 1.5rem; }
@@ -241,6 +240,21 @@ const OVERLAY_CSS = `
   }
   .foreign-box { fill: rgb(from var(--bm-fg) r g b / 0.05); stroke: var(--bm-muted); stroke-dasharray: 6 4; }
   .foreign-label { fill: var(--bm-muted); font-size: 13px; }
+
+  /* Token name plates: hidden by default, shown while Shift is held
+     (data-labels-shift, set by tools.js) or via the tools-bar toggle
+     (data-labels — the mobile path, no modifier keys there). */
+  .token-label {
+    fill: var(--bm-fg);
+    font-weight: 650;
+    paint-order: stroke;
+    stroke: rgb(from var(--bm-bg) r g b / 0.9);
+    stroke-width: 0.25em;
+    text-anchor: middle;
+    pointer-events: none;
+    display: none;
+  }
+  .mat[data-labels] .token-label, .mat[data-labels-shift] .token-label { display: inline; }
 
   /* --- token pool (a full-width grid row) ----------------------------------- */
   .pool {
@@ -530,10 +544,10 @@ class BattleMatOverlay {
     this._wireImageDrop();
   }
 
-  // The right toolbar column: the map tools group at the top, then —
-  // bottom-aligned like the page dock — the area toggles (tracker, map, pool:
-  // the dock's button order first) and the dice roller launcher. No close
-  // button: Escape leaves the screen.
+  // The right toolbar column: the map tools group at the top (which also
+  // hosts the pool toggle), then — bottom-aligned like the page dock — the
+  // tracker and map toggles and the dice roller launcher, mirroring the
+  // dock's buttons exactly. No close button: Escape leaves the screen.
   _buildScreenToolbar() {
     const L = { ...SCREEN_LABELS, ...this.labels };
     const bar = el('div', 'screen-toolbar');
@@ -541,13 +555,14 @@ class BattleMatOverlay {
     bar.setAttribute('aria-label', 'Battle screen');
     bar.setAttribute('aria-orientation', 'vertical');
 
+    // _buildToolbar registers the pool toggle here, so the map must exist
+    // before the tools bar builds
+    this._screenButtons = new Map();
     bar.append(this._buildToolbar(), el('div', 'spacer'));
 
-    this._screenButtons = new Map();
     const toggles = [
       ['tracker', L.title], // the tracker's own panel title doubles as its name
       ['map', L.map],
-      ['pool', L.pool],
     ];
     for (const [area, label] of toggles) {
       const btn = el('button', `b-${area}`);
@@ -656,10 +671,25 @@ class BattleMatOverlay {
     action('image', 'Attach image', () => this._imageInput.click());
     this._settingsBtn = action('grid', 'Grid settings', () => this._toggleSettings());
     this._settingsBtn.setAttribute('aria-expanded', 'false');
+    // view toggles: token name plates (the touch path — Shift does the same
+    // held) and the token pool area (registered in _screenButtons so
+    // _applyUiState drives its pressed state alongside the column toggles)
+    this._labelsBtn = action('label', 'Show token names', () => this._toggleLabels());
+    this._labelsBtn.setAttribute('aria-pressed', 'false');
+    const L = { ...SCREEN_LABELS, ...this.labels };
+    const poolBtn = action('pool', L.pool, () => this._toggleArea('pool'));
+    this._screenButtons.set('pool', poolBtn);
     action('download', 'Export map file', () => this._export());
     action('upload', 'Import map file', () => this._importInput.click());
     action('trash', 'Clear the map', () => this._clear());
     return bar;
+  }
+
+  // Pin the name plates on (the click alternative to holding Shift).
+  _toggleLabels() {
+    const on = !this.svg.hasAttribute('data-labels');
+    this.svg.toggleAttribute('data-labels', on);
+    this._labelsBtn.setAttribute('aria-pressed', String(on));
   }
 
   // ---- token pool ----------------------------------------------------------

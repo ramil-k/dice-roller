@@ -232,6 +232,9 @@ token when it is placed and surface in the initiative tracker.
   2048px are downscaled before storing (they persist as data URIs).
 - **Grid settings** — cell size, offset X/Y (to align the grid with an attached
   map image), feet per cell, grid visibility, and snap-to-grid.
+- **Token names** — hold Shift to show every token's name plate; the tools-bar
+  tag button pins them on (the touch-device path). The tools bar also hosts
+  the token-pool area toggle.
 - **Export / Import** — download the map as a `.canvas` file or load one.
 - **Clear** — remove all content, keeping grid and viewport settings.
 

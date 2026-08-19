@@ -64,6 +64,23 @@ export function updateGrid(refs, grid) {
   refs.gridRect.setAttribute('display', grid.visible ? 'inline' : 'none');
 }
 
+// Name plate under the token, shown while Shift is held (the tools attach a
+// data-labels attribute on the svg; CSS keys visibility off it). Lives inside
+// the token's group so drags move it along. Sized relative to the token so it
+// scales with the world zoom like everything else.
+function tokenLabel(node) {
+  const size = node.width;
+  const fontSize = Math.max(16, size * 0.3);
+  const text = svgEl('text', {
+    class: 'token-label',
+    x: size / 2,
+    y: size + fontSize,
+    'font-size': fontSize,
+  });
+  text.textContent = node[EXT].name || 'Token';
+  return text;
+}
+
 function renderToken(node) {
   const size = node.width;
   const ext = node[EXT];
@@ -186,7 +203,7 @@ export function render(refs, doc) {
     const g = svgEl('g', { 'data-id': node.id, transform: `translate(${node.x} ${node.y})` });
     if (kind === 'token') {
       g.classList.add('token');
-      g.append(...renderToken(node));
+      g.append(...renderToken(node), tokenLabel(node));
       refs.tokens.appendChild(g);
     } else if (kind === 'image') {
       g.append(

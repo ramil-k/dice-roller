@@ -308,15 +308,21 @@ export function attachTools(ctx) {
   }
 
   // Space temporarily turns any primary drag into a pan (held, not toggled).
+  // Shift shows every token's name plate while held (data-labels-shift; the
+  // tools bar has a click toggle for the same thing on touch devices).
   function onKeyDown(e) {
-    if (e.code !== 'Space') return;
     const tag = e.composedPath()[0]?.tagName;
+    if (e.key === 'Shift' && tag !== 'INPUT' && tag !== 'TEXTAREA') {
+      ctx.svg.setAttribute('data-labels-shift', '');
+    }
+    if (e.code !== 'Space') return;
     if (tag === 'INPUT' || tag === 'BUTTON' || tag === 'TEXTAREA') return;
     spaceHeld = true;
     ctx.svg.setAttribute('data-space', '');
     e.preventDefault();
   }
   function onKeyUp(e) {
+    if (e.key === 'Shift') ctx.svg.removeAttribute('data-labels-shift');
     if (e.code !== 'Space') return;
     spaceHeld = false;
     ctx.svg.removeAttribute('data-space');
