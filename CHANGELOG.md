@@ -23,7 +23,8 @@
   initiative-tracker row opens a small card next to it with the combatant's
   name, HP, AC and initiative, plus a ring-color picker (six JSON Canvas
   presets + kind default; stored as the node's `color`, synced to the
-  tracker and carried by exports).
+  tracker and carried by exports). Node clicks tolerate up to 5px of pointer
+  jitter — a shaky click no longer turns into a micro-drag.
 - Token name plates: hovering a token shows its name (replacing the native
   <title> tooltips); hold Shift to show every name on the map, or pin them
   with the new tag button in the tools bar (the touch path). Plates are

@@ -173,7 +173,7 @@ export function attachTools(ctx) {
       const node = g && getNode(ctx.getDoc(), g.getAttribute('data-id'));
       if (node) {
         const wp = worldPoint(e);
-        drag = { id: node.id, dx: wp.x - node.x, dy: wp.y - node.y, pos: null };
+        drag = { id: node.id, dx: wp.x - node.x, dy: wp.y - node.y, pos: null, start: sp, moved: false };
         setMode('draggingNode');
       } else {
         startPan();
@@ -216,6 +216,11 @@ export function attachTools(ctx) {
       ctx.setViewport(panBy(ctx.getViewport(), sp.x - drag.last.x, sp.y - drag.last.y));
       drag.last = sp;
     } else if (mode === 'draggingNode') {
+      // Under CLICK_SLOP px of screen travel this is still a click (pointer
+      // jitter must not turn it into a micro-drag that eats the token card
+      // and nudges the node); the real drag starts once past the slop.
+      if (!drag.moved && Math.hypot(sp.x - drag.start.x, sp.y - drag.start.y) < CLICK_SLOP) return;
+      drag.moved = true;
       const node = getNode(ctx.getDoc(), drag.id);
       if (!node) return;
       const wp = worldPoint(e);
