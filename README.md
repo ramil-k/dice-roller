@@ -157,6 +157,11 @@ choice persists per device in the `battle-mat-ui` `localStorage` key) and a
 d20 button that opens the dice roller on top of the screen. Escape closes the
 screen and returns to the page.
 
+The screen always fills the viewport and its rows never collapse. A hidden
+area just leaves its cell empty and transparent; with the map toggled off the
+page shows through its cell and stays fully clickable — a HUD mode with only
+the pool, the tracker and the toolbar overlaid.
+
 `<battle-toolbar>` above is the usual way in; the standalone `<battle-mat>`
 button opens the same screen on its map area:
 

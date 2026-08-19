@@ -135,13 +135,20 @@ const OVERLAY_CSS = `
 
   /* The battle screen grid: the map / pool / tracker areas stacked on the
      left, the toolbar column on the right (same corner as the page dock).
-     Area visibility is toggled via data-show-* attributes; with the map off
-     its 1fr row collapses. The tracker row is minmax(max-content, 0.5fr):
-     at least its content, and half the map's share of the free space (an fr
-     value is only valid as the max in minmax()). */
+     The grid always fills the whole viewport and the rows never collapse —
+     the toolbar column stays full-height. The tracker row is
+     minmax(max-content, 0.5fr): at least its content, and half the map's
+     share of the free space (an fr value is only valid as the max in
+     minmax()). Area visibility is toggled via data-show-* attributes; a
+     hidden area leaves its cell empty and transparent. With the map off its
+     1fr cell shows the page underneath, and pointer events pass through to
+     it — only the remaining areas stay interactive (the :host is
+     pointer-inert so it never swallows those clicks itself). */
+  :host { pointer-events: none; }
   .mat-root {
     position: absolute;
     inset: 0;
+    pointer-events: auto;
     animation: bm-fade 0.15s ease;
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
@@ -151,7 +158,8 @@ const OVERLAY_CSS = `
       "pool toolbar"
       "tracker toolbar";
   }
-  .mat-root:not([data-show-map]) { grid-template-rows: 0 max-content max-content; }
+  .mat-root:not([data-show-map]) { pointer-events: none; }
+  .mat-root:not([data-show-map]) :is(.screen-toolbar, .pool, .tracker-area) { pointer-events: auto; }
   .mat-root:not([data-show-map]) .map-area { display: none; }
   .mat-root:not([data-show-pool]) .pool { display: none; }
   .mat-root:not([data-show-tracker]) .tracker-area { display: none; }

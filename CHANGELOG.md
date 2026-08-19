@@ -12,6 +12,8 @@
   to the bottom like the page dock, dock-style controls: area toggles
   (persisted per device in the new `battle-mat-ui` localStorage key) and a
   d20 button that opens the dice roller on top; Escape closes the screen.
+  The grid always fills the viewport; with the map toggled off the page
+  shows through its cell and stays clickable (HUD mode).
   `openBattleMat()` gained `labels` and `show` options; the pool moved from
   a floating card to a full-width row.
 - The dice overlay now moves focus into itself on open, so a document-level
