@@ -135,15 +135,17 @@ const OVERLAY_CSS = `
 
   /* The battle screen grid: the map / pool / tracker areas stacked on the
      left, the toolbar column on the right (same corner as the page dock).
-     The grid always fills the whole viewport and the rows never collapse —
-     the toolbar column stays full-height. The tracker row is
-     minmax(max-content, 0.5fr): at least its content, and half the map's
-     share of the free space (an fr value is only valid as the max in
-     minmax()). Area visibility is toggled via data-show-* attributes; a
-     hidden area leaves its cell empty and transparent. With the map off its
-     1fr cell shows the page underneath, and pointer events pass through to
-     it — only the remaining areas stay interactive (the :host is
-     pointer-inert so it never swallows those clicks itself). */
+     The grid always fills the whole viewport — the toolbar column stays
+     full-height. The pool and tracker rows are content-sized, the tracker
+     capped by fit-content(33%): its content up to a third of the screen
+     (the 0.5fr share against the map's 1fr; an fr value is not allowed
+     inside fit-content, hence the percentage), with the list scrolling
+     beyond the cap. Area visibility is toggled via data-show-* attributes;
+     a hidden pool/tracker contributes no content, so its row collapses to
+     0. With the map off its 1fr cell stays, shows the page underneath, and
+     pointer events pass through to it — only the remaining areas stay
+     interactive (the :host is pointer-inert so it never swallows those
+     clicks itself). */
   :host { pointer-events: none; }
   .mat-root {
     position: absolute;
@@ -152,7 +154,7 @@ const OVERLAY_CSS = `
     animation: bm-fade 0.15s ease;
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-rows: 1fr max-content minmax(max-content, 0.5fr);
+    grid-template-rows: 1fr max-content fit-content(33%);
     grid-template-areas:
       "map toolbar"
       "pool toolbar"
@@ -402,6 +404,9 @@ const OVERLAY_CSS = `
     grid-area: tracker;
     display: flex;
     flex-direction: column;
+    /* overflow != visible zeroes the row's automatic minimum, letting the
+       fit-content(33%) cap actually clamp it — the list scrolls beyond it */
+    overflow: hidden;
     background: var(--bm-surface);
     border-top: 1px solid var(--bm-edge);
   }

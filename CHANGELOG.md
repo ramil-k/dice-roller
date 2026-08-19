@@ -9,7 +9,8 @@
   gained a `hide` option alongside `show`).
 - The battle-mat overlay became the **battle screen**: a full-viewport CSS
   grid with the map, the token pool and the embedded initiative tracker
-  stacked on the left (pool and tracker rows at their natural height) and a
+  stacked on the left (pool and tracker rows content-sized, the tracker
+  capped at a third of the screen and zero when hidden) and a
   toolbar column on the right — the map tools group at its top and, aligned
   to the bottom like the page dock, dock-style controls: area toggles
   (persisted per device in the new `battle-mat-ui` localStorage key) and a

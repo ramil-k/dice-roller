@@ -150,8 +150,9 @@ The battle screen is a full-viewport CSS grid: stacked on the left, the
 tokens from the pool, draw, erase, measure, attach map images), the **token
 pool** row and the **initiative tracker** area (the same panel
 `<initiative-tracker>` shows, embedded; the pool row takes its natural
-height, the tracker row at least its content and half the map's share of the
-free space, the map absorbs the rest) — and a toolbar column on the right, in
+height, the tracker row its content up to a third of the screen — scrolling
+beyond that, collapsing to zero when toggled off — and the map absorbs the
+rest) — and a toolbar column on the right, in
 the same corner as the dock. The column has the map tools group at its top
 and, bottom-aligned, dock-style controls: toggles for the three areas (the
 choice persists per device in the `battle-mat-ui` `localStorage` key) and a
