@@ -141,7 +141,6 @@ const OVERLAY_CSS = `
   .mat-root {
     position: absolute;
     inset: 0;
-    background: var(--bm-bg);
     animation: bm-fade 0.15s ease;
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
@@ -200,7 +199,7 @@ const OVERLAY_CSS = `
   .screen-toolbar > button .icon { width: 1.5rem; height: 1.5rem; }
 
   /* --- map area -------------------------------------------------------------- */
-  .map-area { grid-area: map; position: relative; overflow: hidden; min-height: 0; }
+  .map-area { grid-area: map; position: relative; overflow: hidden; min-height: 0; background: var(--bm-bg); }
   .mat { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; display: block; }
   .mat[data-mode="panning"], .mat[data-space] { cursor: grabbing; }
   .mat[data-tool="pan"] { cursor: grab; }
