@@ -24,7 +24,9 @@
   name, HP, AC and initiative, plus a size row (1×1 … 4×4 cells) and a ring-color picker (six JSON Canvas
   presets + kind default; stored as the node's `color`, synced to the
   tracker and carried by exports). Node clicks tolerate up to 5px of pointer
-  jitter — a shaky click no longer turns into a micro-drag.
+  jitter — a shaky click no longer turns into a micro-drag. Tokens spanning
+  an even number of cells snap by their center to grid intersections, so a
+  2×2 token covers exactly four cells instead of straddling nine.
 - Token name plates: hovering a token shows its name (replacing the native
   <title> tooltips); hold Shift to show every name on the map, or pin them
   with the new tag button in the tools bar (the touch path). Plates are

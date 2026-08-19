@@ -65,6 +65,20 @@ describe('snapTokenOrigin', () => {
     const g = grid({ offsetX: 10, offsetY: 10 });
     expect(snapTokenOrigin(12, 12, 64, g)).toEqual({ x: 10, y: 10 });
   });
+
+  it('snaps even spans to intersections so a 2x2 covers exactly four cells', () => {
+    // 128px token centered near intersection (64, 64) -> origin (0, 0)
+    expect(snapTokenOrigin(10, 10, 128, grid())).toEqual({ x: 0, y: 0 });
+    // center (154, 154) -> nearest intersection (128, 128)
+    expect(snapTokenOrigin(90, 90, 128, grid())).toEqual({ x: 64, y: 64 });
+    // 4x4: center (138, 138) -> intersection (128, 128), origin -0.5 cell each way
+    expect(snapTokenOrigin(10, 10, 256, grid())).toEqual({ x: 0, y: 0 });
+  });
+
+  it('keeps odd multi-cell spans centered on a cell', () => {
+    // 3x3 token with center in cell (1, 1) covers cells 0..2
+    expect(snapTokenOrigin(0, 0, 192, grid())).toEqual({ x: 0, y: 0 });
+  });
 });
 
 describe('measure', () => {

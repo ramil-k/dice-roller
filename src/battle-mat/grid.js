@@ -33,12 +33,20 @@ export function cellOf(x, y, grid) {
   };
 }
 
-// Snap a token so it sits centered in the cell under its own center. `x`/`y`
-// is the token's top-left origin and `size` its width/height; tokens smaller
-// or larger than a cell stay centered rather than hugging the cell corner.
+// Snap a token to the grid by its center. `x`/`y` is the token's top-left
+// origin and `size` its width/height. Tokens spanning an odd number of cells
+// (sub-cell ones included) center in the cell under their center; even spans
+// center on the nearest grid intersection instead, so a 2x2 token covers
+// exactly four cells rather than straddling nine.
 export function snapTokenOrigin(x, y, size, grid) {
   const s = grid.cellSize;
-  const { col, row } = cellOf(x + size / 2, y + size / 2, grid);
+  const cx = x + size / 2;
+  const cy = y + size / 2;
+  if (Math.max(1, Math.round(size / s)) % 2 === 0) {
+    const p = snapPoint(cx, cy, grid);
+    return { x: p.x - size / 2, y: p.y - size / 2 };
+  }
+  const { col, row } = cellOf(cx, cy, grid);
   return {
     x: col * s + grid.offsetX + (s - size) / 2,
     y: row * s + grid.offsetY + (s - size) / 2,
