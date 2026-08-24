@@ -369,7 +369,7 @@ const OVERLAY_CSS = `
   }
   .tools .icon { width: 1.2rem; height: 1.2rem; }
   .tools .divider { height: 1px; margin: 0.25rem 0.3rem; background: var(--bm-edge); }
-  .swatches { display: grid; grid-template-columns: 1fr 1fr; gap: 0.3rem; padding: 0.15rem 0.45rem; }
+  .swatches { display: grid; grid-template-columns: 1fr 1fr; gap: 0.3rem; }
   /* .tools button sets 2.5rem sizing; swatches need their own (specificity) */
   .tools button.swatch {
     width: 0.95rem;
