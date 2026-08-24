@@ -134,6 +134,20 @@ const PANEL_CSS = `
   .init-wrap roll-dice { font-size: 0.78rem; }
   roll-dice:not(:defined) { display: none; }
 
+  .trk-link {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.4rem;
+    height: 1.4rem;
+    border-radius: 0.3rem;
+    color: var(--bm-trk-muted);
+  }
+  .trk-link svg { width: 0.85em; height: 0.85em; }
+  .trk-link:hover { color: var(--bm-trk-accent); background: color-mix(in srgb, var(--bm-trk-accent) 14%, transparent); }
+  .trk-link:focus-visible { outline: 2px solid var(--bm-trk-accent); outline-offset: 1px; }
+
   .trk-remove {
     flex: 0 0 auto;
     width: 1.4rem;
@@ -156,6 +170,9 @@ const PANEL_CSS = `
 
 const KIND_COLOR = { player: '#4a9e6f', monster: '#cf5a5a' };
 
+// external-link glyph for the row's creature-page anchor
+const LINK_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6M20 4l-9 9M11 6H5v13h13v-6"/></svg>`;
+
 export const DEFAULT_LABELS = {
   title: 'Initiative',
   round: 'Round',
@@ -169,6 +186,7 @@ export const DEFAULT_LABELS = {
   ac: 'AC',
   init: 'Init',
   remove: 'Remove from battle',
+  link: 'Open page',
 };
 
 // Build the tracker UI inside `container` (the widget's panel element, in the
@@ -247,8 +265,8 @@ export function buildTracker(container, { storageKey = DEFAULT_KEY, labels = {},
       if (onCombatantClick) {
         row.classList.add('trk-clickable');
         row.addEventListener('click', (e) => {
-          // inputs, buttons and the roll chip keep their own click behavior
-          if (e.target.closest?.('input, button, roll-dice')) return;
+          // inputs, buttons, links and the roll chip keep their own click behavior
+          if (e.target.closest?.('input, button, a, roll-dice')) return;
           onCombatantClick(node.id, e.clientX, e.clientY);
         });
       }
@@ -289,6 +307,18 @@ export function buildTracker(container, { storageKey = DEFAULT_KEY, labels = {},
         store.commit();
         setTimeout(render, 0);
       });
+
+      // anchor to the creature's page (new tab keeps the battle screen alive)
+      let link = null;
+      if (node[EXT].link) {
+        link = el('a', 'trk-link');
+        link.href = node[EXT].link;
+        link.target = '_blank';
+        link.rel = 'noopener';
+        link.setAttribute('aria-label', `${L.link}: ${node[EXT].name || 'token'}`);
+        link.title = L.link;
+        link.innerHTML = LINK_ICON;
+      }
 
       const input = (field, value, label) => {
         const inp = el('input');
@@ -341,7 +371,9 @@ export function buildTracker(container, { storageKey = DEFAULT_KEY, labels = {},
         render();
       });
 
-      row.append(marker, name, hpWrap, input('ac', getAc(node), L.ac), initWrap, remove);
+      row.append(marker, name);
+      if (link) row.appendChild(link);
+      row.append(hpWrap, input('ac', getAc(node), L.ac), initWrap, remove);
       list.appendChild(row);
     }
     if (focusedId !== null && focusedField !== null) {

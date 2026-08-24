@@ -185,6 +185,18 @@ describe('addCombatant', () => {
     expect(t[EXT].placed).toBe(false);
   });
 
+  it('keeps the creature page link on the token', () => {
+    const doc = emptyDoc();
+    const t = addCombatant(doc, { name: 'Wolf', kind: 'monster', link: '/wiki/wolf/' });
+    expect(t[EXT].link).toBe('/wiki/wolf/');
+  });
+
+  it('omits the link field when no link is given', () => {
+    const doc = emptyDoc();
+    const t = addCombatant(doc, { name: 'Wolf', kind: 'monster' });
+    expect('link' in t[EXT]).toBe(false);
+  });
+
   it('first instance is plain, later ones get an unused adjective', () => {
     const doc = emptyDoc();
     const a = addCombatant(doc, { name: 'Wolf', kind: 'monster' }, { adjectives: ADJ, rand: first });

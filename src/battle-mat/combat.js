@@ -78,7 +78,7 @@ export function instanceName(doc, baseName, tokenKind = 'player', { adjectives =
 // `rand` is injectable for deterministic tests (defaults to Math.random).
 export function addCombatant(
   doc,
-  { name = 'Token', kind = 'player', image, size, hp, ac, initMod } = {},
+  { name = 'Token', kind = 'player', image, size, hp, ac, initMod, link } = {},
   { adjectives = [], cellSize = 64, rand = Math.random } = {},
 ) {
   const baseName = name;
@@ -104,6 +104,7 @@ export function addCombatant(
   token[EXT].baseName = baseName;
   token[EXT].placed = false;
   if (adjective) token[EXT].adjective = adjective;
+  if (link) token[EXT].link = String(link);
   addNode(doc, token);
   return token;
 }

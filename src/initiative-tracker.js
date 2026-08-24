@@ -193,7 +193,7 @@ export class InitiativeTracker extends HTMLElement {
       note.remove();
       // label-* attributes override the English defaults (localization)
       const labels = {};
-      for (const key of ['title', 'round', 'next', 'fill', 'reset', 'resetConfirm', 'empty', 'name', 'hp', 'ac', 'init', 'remove']) {
+      for (const key of ['title', 'round', 'next', 'fill', 'reset', 'resetConfirm', 'empty', 'name', 'hp', 'ac', 'init', 'remove', 'link']) {
         const v = this.getAttribute(`label-${key}`);
         if (v !== null) labels[key] = v;
       }

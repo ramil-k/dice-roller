@@ -24,6 +24,7 @@
 //   size        D&D size word (tiny…gargantuan) — token footprint in cells
 //   hp, ac      combat stats shown in the tracker
 //   init-mod    initiative modifier (the tracker offers a 1d20±mod roll chip)
+//   link        URL of the creature's page — tracker rows show it as an anchor
 //   storage-key encounter localStorage key (default "battle-mat-canvas"),
 //               must match the paired <battle-mat> / <initiative-tracker>
 //   label-added transient click feedback text (default "Added")
@@ -244,6 +245,7 @@ export class AddToBattle extends HTMLElement {
           hp: attr('hp'),
           ac: attr('ac'),
           initMod: attr('init-mod'),
+          link: attr('link'),
         },
         { adjectives: AddToBattle.adjectives, cellSize: getExt(store.doc).grid.cellSize },
       );

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- `<add-to-battle>` — new `link` attribute: the URL of the creature's page is
+  stored on the token (`x-battleMat.link`) and initiative-tracker rows show it
+  as a small external-link anchor next to the name (opens in a new tab; rows
+  without a link render no anchor). Localizable via `label-link` on
+  `<battle-toolbar>` / `<initiative-tracker>`.
+
 - `<battle-toolbar>` — a new always-visible vertical dock pinned to the
   bottom-right corner with initiative, battle map and dice buttons (the
   recommended page-level entry point; localizable via `label-*`). The
