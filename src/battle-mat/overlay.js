@@ -177,6 +177,9 @@ const OVERLAY_CSS = `
   .mat-root:not([data-show-map]) { pointer-events: none; }
   .mat-root:not([data-show-map]) :is(.screen-toolbar, .tracker-area, .token-card) { pointer-events: auto; }
   .mat-root:not([data-show-map]) .map-area { display: none; }
+  /* nothing left to control — hide the toolbar too (Escape still closes,
+     and the dock buttons underneath stay clickable to bring areas back) */
+  .mat-root:not([data-show-map]):not([data-show-tracker]) .screen-toolbar { display: none; }
   .mat-root:not([data-show-map]) .pool { display: none; }
   .mat-root:not([data-show-pool]) .pool { display: none; }
   .mat-root:not([data-show-tracker]) .tracker-area { display: none; }
