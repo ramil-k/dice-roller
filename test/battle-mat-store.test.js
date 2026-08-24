@@ -202,3 +202,65 @@ describe('getStore', () => {
     expect(loadDoc(key, storage).nodes).toHaveLength(1);
   });
 });
+
+describe('adoptStored (cross-tab storage event)', () => {
+  let n = 0;
+  const key = () => `store-adopt-${++n}`;
+
+  it('adopts the stored doc but keeps the local viewport', () => {
+    const storage = memoryStorage();
+    const k = key();
+    const store = getStore(k, { storage });
+    store.doc['x-battleMat'].viewport = { x: 500, y: 600, zoom: 2 };
+
+    const other = emptyDoc();
+    addNode(other, makeToken({ x: 64, y: 64, url: 'u', name: 'Wolf' }));
+    other['x-battleMat'].viewport = { x: -100, y: -100, zoom: 0.25 };
+    other['x-battleMat'].combat.round = 3;
+    saveDoc(k, other, storage);
+
+    const events = [];
+    store.subscribe((e) => events.push(e));
+    expect(store.adoptStored()).toBe(true);
+    expect(store.doc.nodes).toHaveLength(1);
+    expect(store.doc['x-battleMat'].combat.round).toBe(3);
+    expect(store.doc['x-battleMat'].viewport).toEqual({ x: 500, y: 600, zoom: 2 });
+    expect(events).toEqual([{ type: 'change', full: true }]);
+  });
+
+  it('ignores storage writes while a sync room owns the store', () => {
+    const storage = memoryStorage();
+    const k = key();
+    const store = getStore(k, { storage });
+    const mine = store.doc;
+    addNode(mine, makeToken({ x: 0, y: 0, url: 'u', name: 'Locked' }));
+    mine.nodes[0]['x-battleMat'].locked = true;
+
+    const stale = emptyDoc();
+    addNode(stale, structuredClone(mine.nodes[0]));
+    delete stale.nodes[0]['x-battleMat'].locked;
+    saveDoc(k, stale, storage);
+
+    store.synced = true;
+    const events = [];
+    store.subscribe((e) => events.push(e));
+    expect(store.adoptStored()).toBe(false);
+    expect(store.doc).toBe(mine);
+    expect(store.doc.nodes[0]['x-battleMat'].locked).toBe(true);
+    expect(events).toEqual([]);
+
+    store.synced = false;
+    expect(store.adoptStored()).toBe(true);
+    expect(store.doc.nodes[0]['x-battleMat'].locked).toBeUndefined();
+  });
+
+  it('leaves the doc alone when the stored value is invalid', () => {
+    const storage = memoryStorage();
+    const k = key();
+    const store = getStore(k, { storage });
+    const mine = store.doc;
+    storage.setItem(k, '{broken');
+    expect(store.adoptStored()).toBe(false);
+    expect(store.doc).toBe(mine);
+  });
+});

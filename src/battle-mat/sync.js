@@ -289,6 +289,7 @@ export function startSync(storageKey = DEFAULT_KEY, { server = DEFAULT_SERVER, r
     pushTimer: null,
   };
   sessions.set(storageKey, session);
+  store.synced = true; // the room, not other tabs' storage writes, drives this store
 
   const pushNow = () => {
     clearTimeout(session.pushTimer);
@@ -414,6 +415,7 @@ export function stopSync(storageKey = DEFAULT_KEY, { forget = true } = {}) {
     clearTimeout(session.cursorTimer);
     if (session.onPresence) window.removeEventListener(PRESENCE_EVENT, session.onPresence);
     session.unsubscribe?.();
+    getStore(storageKey).synced = false;
     session.provider.destroy();
     session.ydoc.destroy();
     sessions.delete(storageKey);

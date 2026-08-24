@@ -24,7 +24,7 @@
 // Storage is injectable for tests (Node has no localStorage); covered by
 // test/battle-mat-store.test.js.
 
-import { validateCanvas, serialize, emptyDoc } from './canvas-doc.js';
+import { validateCanvas, serialize, emptyDoc, getExt } from './canvas-doc.js';
 import { dlog, caller, docSummary, vpOf } from './debug.js';
 
 export const DEFAULT_KEY = 'battle-mat-canvas';
@@ -146,20 +146,45 @@ export function getStore(key = DEFAULT_KEY, { storage = globalThis.localStorage,
       subscribers.add(fn);
       return () => subscribers.delete(fn);
     },
+    // Set while a sync session drives this store (see the storage handler).
+    synced: false,
+    // Adopt what another tab wrote to the key (the `storage` handler's body,
+    // callable directly for tests). Returns whether the doc was replaced.
+    adoptStored() {
+      const loaded = loadDoc(key, storage);
+      if (store.synced) {
+        dlog('store', 'storage event ignored: a sync room owns this store', {
+          current: docSummary(doc),
+          stored: loaded ? docSummary(loaded) : '(invalid)',
+        });
+        return false;
+      }
+      if (!loaded) return false;
+      // keep this tab's pan/zoom - the other tab's viewport is its own
+      getExt(loaded).viewport = { ...getExt(doc).viewport };
+      dlog('store', 'storage event: another tab/page wrote this key - adopting its doc, keeping the local viewport', {
+        current: docSummary(doc),
+        stored: docSummary(loaded),
+      });
+      store.setDoc(loaded, { persist: false });
+      return true;
+    },
   };
 
   // Cross-tab sync: `storage` fires in *other* tabs when this key is written.
   // Last write wins; the freshly stored doc replaces the local one.
+  //
+  // Two exceptions. The viewport is per tab: the stored doc carries the
+  // writer's pan/zoom, and adopting it would yank this tab's view around, so
+  // the local viewport is kept. And while a sync room is the source of truth
+  // (`store.synced`, set by sync.js) storage events are ignored entirely -
+  // every tab in the room receives the same edits from the room, and adopting
+  // another tab's (possibly older) write here would look like a local edit
+  // that the bridge then pushes to the room, undoing someone's change.
   if (typeof window !== 'undefined') {
     window.addEventListener('storage', (e) => {
       if (e.key !== key || e.newValue === null) return;
-      const loaded = loadDoc(key, storage);
-      dlog('store', 'storage event: another tab/page wrote this key - adopting its doc (viewport included!)', {
-        current: docSummary(doc),
-        stored: loaded ? docSummary(loaded) : '(invalid)',
-        rawLength: e.newValue.length,
-      });
-      if (loaded) store.setDoc(loaded, { persist: false });
+      store.adoptStored();
     });
   }
 

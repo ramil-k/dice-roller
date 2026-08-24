@@ -289,7 +289,10 @@ While connected, the encounter is a CRDT (Yjs): everyone's edits merge live
 at the granularity of a single field of a single token, so one player moving
 their token while another edits a different token's hp never conflicts.
 Concurrent edits to the *same* field resolve last-write-wins on that field
-only. Pan/zoom stays per device and is never synced. The engine ships in a
+only. Pan/zoom stays per device and is never synced. While a room is
+connected the store ignores other tabs' `localStorage` writes - the room is
+the source of truth for every tab on this device - and outside a room a
+cross-tab update keeps the tab's own viewport. The engine ships in a
 separate lazy chunk (~45 KB gzip) that loads only when a room is configured
 or the panel is used.
 

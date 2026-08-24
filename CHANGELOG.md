@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- Fixed: a `localStorage` write from another tab (or another page of the
+  site) replaced the whole encounter including the writer's pan/zoom, so
+  the viewport jumped; in a sync room the adopted (possibly older) copy then
+  looked like a local edit and was pushed to the room, dropping edits such
+  as an image lock. Cross-tab updates now keep the tab's own viewport, and a
+  store driven by a sync room ignores storage events altogether.
+- Verbose diagnostics: every path that replaces the document, moves the
+  viewport or flips an image lock logs to the console (`[bm ...]` lines,
+  incl. the exact field ops each sync push sends). On by default; set
+  `localStorage['battle-mat-debug'] = 'off'` to silence.
+
 - Battle map images can be selected, resized and locked. Clicking an
   attached image (select tool) draws a selection frame with eight resize
   handles and opens a card next to it — the image's size in px and grid
