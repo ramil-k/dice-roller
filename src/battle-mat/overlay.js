@@ -189,9 +189,11 @@ const OVERLAY_CSS = `
      unpressed ones go muted. */
   .screen-toolbar {
     grid-area: toolbar;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
+    display: grid;
+    grid-template-columns: 1fr min-content min-content min-content;
+    /* everything sits at the bottom of the full-height column, like the dock */
+    align-content: end;
+    align-items: end;
     padding: 0;
     background: var(--bm-surface);
     border-left: 1px solid var(--bm-edge);
@@ -202,9 +204,6 @@ const OVERLAY_CSS = `
     height: 0;
     min-height: 100%;
   }
-  /* the map tools sit at the top; the spacer pushes the dock-style controls
-     to the bottom of the column */
-  .screen-toolbar .spacer { flex: 1; }
   .screen-toolbar > button {
     display: inline-flex;
     align-items: center;
@@ -808,7 +807,7 @@ class BattleMatOverlay {
     // _buildToolbar registers the pool toggle here, so the map must exist
     // before the tools bar builds
     this._screenButtons = new Map();
-    bar.append(this._buildToolbar(), el('div', 'spacer'));
+    bar.append(this._buildToolbar());
 
     const toggles = [
       ['tracker', L.title], // the tracker's own panel title doubles as its name
