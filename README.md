@@ -129,7 +129,7 @@ import '@ramilkos/roll-dice/battle-toolbar';
 | `storage-key` | `localStorage` key of the shared encounter                   | `battle-mat-canvas` |
 | `roster`      | JSON array of extra pool tokens; the property wins           | `[]`                |
 | `dice`        | die sizes the builder tray offers, e.g. `"6 20"`             | `4 6 8 10 12 20`    |
-| `label-*`     | localized UI strings for the dock, the battle screen toolbar and the tracker area: `label-map`, `label-pool`, `label-dice` plus the tracker's `label-title`, `label-round`, `label-next`, `label-fill`, `label-reset`, `label-resetconfirm`, `label-empty`, `label-name`, `label-hp`, `label-ac`, `label-init`, `label-remove`, `label-link`, and the sync panel's `label-sync`, `label-synccreate`, `label-syncjoin`, `label-syncleave`, `label-synccodeplaceholder`, `label-syncoff`, `label-syncconnecting`, `label-syncconnected`, `label-syncunknownroom`, `label-syncfailed`, `label-syncjoinconfirm`, `label-synccopylink`, `label-synccopied`, `label-syncname`, `label-synccolor` | English |
+| `label-*`     | localized UI strings for the dock, the battle screen toolbar and the tracker area: `label-map`, `label-pool`, `label-dice` plus the tracker's `label-title`, `label-round`, `label-next`, `label-fill`, `label-reset`, `label-resetconfirm`, `label-empty`, `label-name`, `label-hp`, `label-ac`, `label-init`, `label-remove`, `label-link`, the image card's `label-image`, `label-lock`, `label-unlock`, `label-imageremove`, and the sync panel's `label-sync`, `label-synccreate`, `label-syncjoin`, `label-syncleave`, `label-synccodeplaceholder`, `label-syncoff`, `label-syncconnecting`, `label-syncconnected`, `label-syncunknownroom`, `label-syncfailed`, `label-syncjoinconfirm`, `label-synccopylink`, `label-synccopied`, `label-syncname`, `label-synccolor` | English |
 
 Unlike the other widgets the dock pins itself flush into the corner
 (`position: fixed; right: 0; bottom: 0`, only the top-left corner rounded);
@@ -231,6 +231,14 @@ token when it is placed and surface in the initiative tracker.
   default, configurable).
 - **Attach image** — pick a file or drop one onto the map. Images larger than
   2048px are downscaled before storing (they persist as data URIs).
+- **Image frame** — click an attached image with the select tool to select it:
+  a frame with eight resize handles appears (corners keep the aspect ratio,
+  Shift frees them; edges pull one side; images never snap) and a card next
+  to it shows the size in px and cells, a lock toggle and a remove button.
+  A locked image (`x-battleMat.locked`) cannot be moved, resized or erased —
+  dragging it pans the map, a tap still selects it (dashed frame) so it can
+  be unlocked. Delete/Backspace removes the selected unlocked image, Escape
+  deselects. Size and lock merge per field in sync rooms.
 - **Grid settings** — cell size, offset X/Y (to align the grid with an attached
   map image), feet per cell, grid visibility, and snap-to-grid.
 - **Token card** — click a token with the select tool (without dragging), or
@@ -314,7 +322,7 @@ an `x-battleMat` extension property that conforming tools preserve:
 | Entity          | Node `type` | Extension (`x-battleMat`)                              |
 | --------------- | ----------- | ------------------------------------------------------ |
 | Token           | `link`      | `{ kind: "token", name, source, tokenKind, link? }`    |
-| Attached image  | `link`      | `{ kind: "image" }` (`url` is a data URI)              |
+| Attached image  | `link`      | `{ kind: "image", locked? }` (`url` is a data URI)     |
 | Stroke / shape  | `text`      | `{ kind: "stroke", shape, points, strokeWidth }`       |
 
 Stroke points are stored relative to the node's `x`/`y`, and the node's box is
@@ -460,7 +468,11 @@ The widget is a normal in-flow element; its panel opens below the toggle
 button by default — see [Positioning](#positioning-the-widgets).
 
 The panel lists combatants sorted by initiative (descending; unrolled ones
-last, ties by name), including ones still in Reserve (not yet on the map). Each
+last, ties by name), including ones still in Reserve (not yet on the map). The
+list is a CSS grid table (each row a subgrid, so columns align across rows;
+the header is a wrapping flex row with a spacer pushing the buttons right);
+below 600px every row wraps into two lines — marker and name on the first,
+HP / AC / initiative / remove on the second. Each
 row has an editable name field, editable HP (with a `/max` hint when the token
 was placed with hit points), AC, and initiative, plus a button to remove the
 combatant from the battle. When the page has the `<roll-dice>` component loaded,
@@ -658,11 +670,16 @@ roll(poolToParsed([20, 6, 6], 2)); // build a roll from a pool of die sizes
 - `src/battle-mat/` — the lazily-loaded battle screen + tracker implementation:
   `overlay.js` (the screen: grid layout, toolbar, map shell), `view.js` (SVG
   scene), `tools.js` (pointer state
-  machine), `tracker.js` (initiative panel), and the pure modules
+  machine), `tracker.js` (initiative panel), `sync.js` (the Yjs bridge, room
+  session, invite links and the presence profile — its own lazy chunk with
+  `yjs`/`y-websocket`), `presence.js` (the presence events the map, the
+  tracker and the sync module exchange), `adjectives.js` (the instance
+  adjective list shared by `<add-to-battle>`, the mat and presence names),
+  and the pure modules
   `canvas-doc.js`, `grid.js`, `viewport.js`, `combat.js` (turn order plus
   `addCombatant`), `registry.js`, `store.js` (the shared per-key encounter store).
 - `index.html` — live demo with several formulas and a roll-event log.
-- `test/` — Vitest suites: dice logic, geometry, regularity, and the pure battle-mat modules.
+- `test/` — Vitest suites: dice logic, geometry, regularity, the pure battle-mat modules and the sync bridge (plain doc ↔ Y.Doc round-trip, concurrent merges, invite-link parsing).
 
 ## Browser support
 

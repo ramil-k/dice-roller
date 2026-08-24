@@ -16,11 +16,40 @@
   its node still exists. Localizable via `label-image`, `label-lock`,
   `label-unlock`, `label-imageremove` on `<battle-toolbar>`.
 
+- Sync rooms: the battle screen toolbar gained a sync button (Chikin's
+  circumnavigation glyph) that opens a room panel — create a room from the
+  current encounter or join one by code. While connected the encounter is a
+  Yjs CRDT hosted by [dice-roller-sync](https://github.com/ramil-k/dice-roller-sync):
+  everyone's edits merge live per field of a single node (pan/zoom stays
+  local), the room replaces the local encounter on join (after a confirm)
+  and an empty room is seeded from it on create. The session persists in
+  `battle-mat-sync` and reconnects on page load, screen open or not; the
+  engine is a separate lazy chunk (~45 KB gzip). The room name in the panel
+  is an invite link (`#bm-room=<code>`, also copied by **Copy invite link**):
+  opening it on any page with `<battle-toolbar>` joins the room, silently
+  when there is no local encounter. Localizable via `label-sync*` on
+  `<battle-toolbar>`.
+
+- Presence in sync rooms: peers see each other's named, colored cursor on the
+  map and a colored ring on the tracker input a peer is editing (name as the
+  tooltip). The sync panel has a name field and a color palette
+  (`battle-mat-profile`); the name falls back to the page's tg-login profile
+  and is always prefixed with an instance adjective from the shared
+  adjective list, so two players with the same name still differ (a nameless
+  player is just the adjective). Presence rides on Yjs awareness and is never
+  stored.
+
+- The initiative tracker is a grid table now: rows are subgrids (columns
+  line up across rows), the header is a wrapping flex row with a spacer, and
+  below 600px each row wraps into two lines (marker + name, then HP / AC /
+  initiative / remove).
+
 - `<add-to-battle>` — new `link` attribute: the URL of the creature's page is
   stored on the token (`x-battleMat.link`) and initiative-tracker rows show it
   as a small external-link anchor next to the name (opens in a new tab; rows
-  without a link render no anchor). Localizable via `label-link` on
-  `<battle-toolbar>` / `<initiative-tracker>`.
+  without a link render no anchor). The token card shows the same anchor in
+  its header. Localizable via `label-link` on `<battle-toolbar>` /
+  `<initiative-tracker>`.
 
 - `<battle-toolbar>` — a new always-visible vertical dock pinned to the
   bottom-right corner with initiative, battle map and dice buttons (the
