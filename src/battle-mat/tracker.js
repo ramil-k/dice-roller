@@ -19,6 +19,7 @@
 
 import { el } from './dom.js';
 import { EXT, getExt, resolveColor } from './canvas-doc.js';
+import { AWARENESS_EVENT, publishPresence, safeColor, safeName } from './presence.js';
 import { getStore, DEFAULT_KEY } from './store.js';
 import {
   turnOrder,
@@ -433,7 +434,50 @@ export function buildTracker(container, { storageKey = DEFAULT_KEY, labels = {},
       inp?.focus();
       inp?.select();
     }
+    applyRemoteFocus();
   }
+
+  // --- presence (sync rooms): tell peers which field this player is editing
+  // and ring the fields peers are editing in their color. Inert without a
+  // connected room - publishing dispatches an event nobody listens to.
+  container.addEventListener('focusin', (e) => {
+    const d = e.target?.dataset;
+    if (d?.nodeId && d?.field) publishPresence(storageKey, { focus: { nodeId: d.nodeId, field: d.field } });
+  });
+  container.addEventListener('focusout', (e) => {
+    if (e.target?.dataset?.field) publishPresence(storageKey, { focus: null });
+  });
+
+  let remoteFocus = [];
+  const applyRemoteFocus = () => {
+    for (const inp of list.querySelectorAll('input[data-remote-focus]')) {
+      inp.style.removeProperty('box-shadow');
+      inp.removeAttribute('data-remote-focus');
+    }
+    for (const f of remoteFocus) {
+      const inp = list.querySelector(
+        `input[data-node-id="${CSS.escape(f.nodeId)}"][data-field="${CSS.escape(f.field)}"]`,
+      );
+      if (!inp) continue;
+      inp.style.boxShadow = `0 0 0 2px ${f.color}`;
+      inp.setAttribute('data-remote-focus', '');
+      // the name input's title shows the combatant name - leave it alone
+      if (f.field !== 'name' && f.name) inp.title = f.name;
+    }
+  };
+  const onAwareness = (e) => {
+    if (e.detail?.key !== storageKey) return;
+    remoteFocus = e.detail.states
+      .filter((st) => st.focus?.nodeId && st.focus?.field)
+      .map((st) => ({
+        nodeId: String(st.focus.nodeId),
+        field: String(st.focus.field),
+        color: safeColor(st.user?.color),
+        name: safeName(st.user?.name),
+      }));
+    applyRemoteFocus();
+  };
+  window.addEventListener(AWARENESS_EVENT, onAwareness);
 
   // Any change — this panel, the mat, another tab — redraws the list, except
   // while a row input has focus (a mid-typing mat autosave in another
@@ -455,6 +499,7 @@ export function buildTracker(container, { storageKey = DEFAULT_KEY, labels = {},
   return {
     dispose() {
       unsubscribe();
+      window.removeEventListener(AWARENESS_EVENT, onAwareness);
       container.replaceChildren();
     },
   };

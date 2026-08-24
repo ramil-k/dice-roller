@@ -27,12 +27,33 @@ import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
 import { DEFAULT_KEY, getStore } from './store.js';
 import { EXT } from './canvas-doc.js';
+import { AWARENESS_EVENT, PRESENCE_EVENT } from './presence.js';
 
 export const SYNC_KEY = 'battle-mat-sync';
 export const DEFAULT_SERVER = 'https://universal.ramilkarimov.me:9443';
 
 const LOCAL_ORIGIN = 'battle-mat-local';
 const PUSH_DEBOUNCE = 250;
+const CURSOR_THROTTLE = 40; // ms between cursor awareness broadcasts
+
+// Presence identity: no accounts anywhere, so the name comes from the site's
+// optional tg-login profile (dnd-tg-user in localStorage) with a numbered
+// fallback, and the color is derived from the Yjs client id.
+const USER_COLORS = ['#e0464c', '#f4a83a', '#f4c430', '#5fb98d', '#58b7d8', '#7d97e8', '#b078d8', '#d86fa8'];
+
+function localUser(clientId) {
+  let name = null;
+  try {
+    const u = JSON.parse(globalThis.localStorage?.getItem('dnd-tg-user') ?? 'null');
+    name = u?.first_name ?? u?.username ?? null;
+  } catch {
+    /* no profile - fall through */
+  }
+  return {
+    name: (name ?? `Player ${(clientId % 90) + 10}`).slice(0, 24),
+    color: USER_COLORS[clientId % USER_COLORS.length],
+  };
+}
 
 // ---------------------------------------------------------------------------
 // config ({server?, room}) in localStorage
@@ -226,6 +247,38 @@ export function startSync(storageKey = DEFAULT_KEY, { server = DEFAULT_SERVER, r
     }
   };
 
+  // --- presence: cursors and tracker focus ride on Yjs awareness. The UI
+  // publishes local state via PRESENCE_EVENT and renders peers from
+  // AWARENESS_EVENT (see presence.js); the server relays awareness updates
+  // to the whole room.
+  const awareness = provider.awareness;
+  awareness.setLocalStateField('user', localUser(ydoc.clientID));
+  const emitAwareness = () => {
+    const states = [];
+    awareness.getStates().forEach((state, clientId) => {
+      if (clientId !== ydoc.clientID && state?.user) states.push({ clientId, ...state });
+    });
+    window.dispatchEvent(new CustomEvent(AWARENESS_EVENT, { detail: { key: storageKey, states } }));
+  };
+  awareness.on('change', emitAwareness);
+  session.onPresence = (e) => {
+    const { key, patch } = e.detail ?? {};
+    if (key !== storageKey || !patch) return;
+    if ('focus' in patch) awareness.setLocalStateField('focus', patch.focus);
+    if ('cursor' in patch) {
+      // pointermove fires way faster than peers need to see it - trailing
+      // throttle, always broadcasting the latest position
+      session.cursor = patch.cursor;
+      if (session.cursorTimer == null) {
+        session.cursorTimer = setTimeout(() => {
+          session.cursorTimer = null;
+          awareness.setLocalStateField('cursor', session.cursor);
+        }, CURSOR_THROTTLE);
+      }
+    }
+  };
+  window.addEventListener(PRESENCE_EVENT, session.onPresence);
+
   session.unsubscribe = store.subscribe((e) => {
     if (!session.ready || session.applying || e.type !== 'change') return;
     if (session.pushTimer === null) {
@@ -264,10 +317,15 @@ export function stopSync(storageKey = DEFAULT_KEY, { forget = true } = {}) {
   const session = sessions.get(storageKey);
   if (session) {
     clearTimeout(session.pushTimer);
+    clearTimeout(session.cursorTimer);
+    if (session.onPresence) window.removeEventListener(PRESENCE_EVENT, session.onPresence);
     session.unsubscribe?.();
     session.provider.destroy();
     session.ydoc.destroy();
     sessions.delete(storageKey);
+    // peers are gone from this client's point of view - let the UI clear
+    // any cursors and focus rings it drew
+    window.dispatchEvent(new CustomEvent(AWARENESS_EVENT, { detail: { key: storageKey, states: [] } }));
   }
   if (forget) saveSyncConfig(null);
   emitStatus(storageKey, null);

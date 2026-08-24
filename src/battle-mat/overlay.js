@@ -49,8 +49,10 @@ import {
 import { getAdjectives } from './adjectives.js';
 import { CATEGORIES, iconUrl } from './registry.js';
 import { buildScene, render, applyViewport, updateGrid } from './view.js';
+import { screenToWorld } from './viewport.js';
+import { AWARENESS_EVENT, publishPresence, safeColor, safeName } from './presence.js';
 import { attachTools } from './tools.js';
-import { buildTracker } from './tracker.js';
+import { buildTracker, LINK_ICON } from './tracker.js';
 
 const MAX_IMAGE_DIM = 2048; // attached images are downscaled to fit (quota)
 
@@ -483,6 +485,16 @@ const OVERLAY_CSS = `
   .sync-panel button:hover { background: rgb(from var(--bm-fg) r g b / 0.14); }
   .sync-panel [hidden] { display: none; }
 
+  /* --- remote cursors (sync rooms) ------------------------------------------ */
+  .layer-cursors { pointer-events: none; }
+  .layer-cursors text {
+    font: 600 11px system-ui, sans-serif;
+    paint-order: stroke;
+    stroke: rgb(0 0 0 / 0.6);
+    stroke-width: 3px;
+    fill: #fff;
+  }
+
   /* --- token card (opened by clicking a token or a tracker row) ------------ */
   .token-card {
     position: absolute;
@@ -503,6 +515,20 @@ const OVERLAY_CSS = `
     margin-bottom: 0.4rem;
   }
   .token-card .tc-dot { flex: 0 0 auto; width: 0.65em; height: 0.65em; border-radius: 50%; }
+  .token-card .tc-link {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.4rem;
+    height: 1.4rem;
+    margin-left: auto;
+    border-radius: 0.3rem;
+    color: var(--bm-muted);
+  }
+  .token-card .tc-link svg { width: 0.9em; height: 0.9em; }
+  .token-card .tc-link:hover { color: var(--bm-accent); background: color-mix(in srgb, var(--bm-accent) 14%, transparent); }
+  .token-card .tc-link:focus-visible { outline: 2px solid var(--bm-accent); outline-offset: 1px; }
   .token-card .tc-stats { display: flex; gap: 0.9em; margin-bottom: 0.55rem; }
   .token-card .tc-stat { display: inline-flex; align-items: baseline; gap: 0.3em; }
   .token-card .tc-label { color: var(--bm-muted); font-size: 0.85em; }
@@ -620,6 +646,10 @@ class BattleMatOverlay {
       if (e.detail?.key === this.storageKey) this._renderSyncState(e.detail);
     };
     window.addEventListener('battle-mat-sync-status', this._onSyncStatus);
+    this._onAwareness = (e) => {
+      if (e.detail?.key === this.storageKey) this._renderCursors(e.detail.states);
+    };
+    window.addEventListener(AWARENESS_EVENT, this._onAwareness);
     this._syncFromDoc();
     this._screenButtons.get(show && AREAS.includes(show) ? show : 'map').focus();
   }
@@ -634,6 +664,8 @@ class BattleMatOverlay {
     this.store?.flush();
     document.removeEventListener('keydown', this._onKeydown, true);
     if (this._onSyncStatus) window.removeEventListener('battle-mat-sync-status', this._onSyncStatus);
+    if (this._onAwareness) window.removeEventListener(AWARENESS_EVENT, this._onAwareness);
+    if (this._syncLive) publishPresence(this.storageKey, { cursor: null });
     if (this.host.parentNode) this.host.parentNode.removeChild(this.host);
     if (this.opener && typeof this.opener.focus === 'function') this.opener.focus();
   }
@@ -679,6 +711,23 @@ class BattleMatOverlay {
     const mapArea = el('div', 'map-area');
     this.svg = svgEl('svg', { class: 'mat' });
     this.refs = buildScene(this.svg);
+    // peers' pointers (sync rooms) live inside the world transform, so they
+    // pan/zoom with the scene; each glyph is counter-scaled to screen size
+    this._cursorLayer = svgEl('g', { class: 'layer-cursors' });
+    this.refs.world.appendChild(this._cursorLayer);
+    this._remoteCursors = new Map();
+    this._awarenessStates = [];
+    this._onCursorMove = (e) => {
+      if (!this._syncLive || !this._ui.map) return;
+      const r = this.svg.getBoundingClientRect();
+      const w = screenToWorld(getExt(this.store.doc).viewport, e.clientX - r.left, e.clientY - r.top);
+      publishPresence(this.storageKey, { cursor: { x: w.x, y: w.y } });
+    };
+    this._onCursorLeave = () => {
+      if (this._syncLive) publishPresence(this.storageKey, { cursor: null });
+    };
+    this.svg.addEventListener('pointermove', this._onCursorMove);
+    this.svg.addEventListener('pointerleave', this._onCursorLeave);
     mapArea.append(this.svg, this._buildSettings());
 
     this._status = el('div', 'status');
@@ -786,7 +835,7 @@ class BattleMatOverlay {
   _renderCard(node) {
     const card = this._card;
     const ext = node[EXT];
-    const L = { hp: 'HP', ac: 'AC', init: 'Init', ...this.labels };
+    const L = { hp: 'HP', ac: 'AC', init: 'Init', link: 'Open page', ...this.labels };
     const kindColor = ext.tokenKind === 'monster' ? 'var(--bm-token-monster)' : 'var(--bm-token-player)';
     card.replaceChildren();
 
@@ -794,6 +843,17 @@ class BattleMatOverlay {
     const dot = el('span', 'tc-dot');
     dot.style.background = node.color ? resolveColor(node.color) : kindColor;
     head.append(dot, el('span', 'tc-name', ext.name || 'Token'));
+    if (ext.link) {
+      // same anchor as in the tracker rows — new tab keeps the screen alive
+      const link = el('a', 'tc-link');
+      link.href = ext.link;
+      link.target = '_blank';
+      link.rel = 'noopener';
+      link.setAttribute('aria-label', `${L.link}: ${ext.name || 'token'}`);
+      link.title = L.link;
+      link.innerHTML = LINK_ICON;
+      head.appendChild(link);
+    }
     card.appendChild(head);
 
     const stats = el('div', 'tc-stats');
@@ -1044,6 +1104,7 @@ class BattleMatOverlay {
   _renderSyncState({ room, status }) {
     const L = { ...SCREEN_LABELS, ...this.labels };
     this._syncBtn.setAttribute('data-state', status);
+    this._syncLive = status === 'connected';
     this._syncRoom = room ?? null;
     this._syncLeave.hidden = status === 'off';
     this._syncCopy.hidden = status !== 'connected';
@@ -1083,6 +1144,47 @@ class BattleMatOverlay {
       // link for manual copying instead
       window.prompt(L.syncCopyLink, link);
     }
+  }
+
+  // Draw peers' cursors from the latest awareness states. Cheap enough to
+  // rerun wholesale: a room holds a handful of players, not a crowd.
+  _renderCursors(states) {
+    this._awarenessStates = states;
+    const zoom = getExt(this.store.doc).viewport.zoom || 1;
+    const seen = new Set();
+    for (const st of states) {
+      if (!st.cursor || !Number.isFinite(st.cursor.x) || !Number.isFinite(st.cursor.y)) continue;
+      const id = String(st.clientId);
+      seen.add(id);
+      let g = this._remoteCursors.get(id);
+      if (!g) {
+        g = svgEl('g');
+        const arrow = svgEl('path', {
+          class: 'cursor-arrow',
+          d: 'M0 0 L12 9 L7 10 L9.5 16.5 L6.9 17.6 L4.4 11.2 L0 14.5 Z',
+          stroke: '#fff',
+          'stroke-width': 1,
+        });
+        const label = svgEl('text', { x: 13, y: 24 });
+        g.append(arrow, label);
+        this._cursorLayer.appendChild(g);
+        this._remoteCursors.set(id, g);
+      }
+      g.querySelector('.cursor-arrow').setAttribute('fill', safeColor(st.user?.color));
+      g.querySelector('text').textContent = safeName(st.user?.name);
+      g.setAttribute('transform', `translate(${st.cursor.x} ${st.cursor.y}) scale(${1 / zoom})`);
+    }
+    for (const [id, g] of this._remoteCursors) {
+      if (!seen.has(id)) {
+        g.remove();
+        this._remoteCursors.delete(id);
+      }
+    }
+  }
+
+  // Zoom changed - refresh the counter-scale that keeps cursors screen-sized.
+  _rescaleCursors() {
+    if (this._awarenessStates.length) this._renderCursors(this._awarenessStates);
   }
 
   _buildToolbar() {
@@ -1385,6 +1487,7 @@ class BattleMatOverlay {
       setViewport: (vp) => {
         getExt(this.store.doc).viewport = vp;
         applyViewport(this.refs, vp);
+        this._rescaleCursors();
       },
       commit: () => this._commit(),
       save: () => this._save(),
@@ -1460,6 +1563,7 @@ class BattleMatOverlay {
     updateGrid(this.refs, ext.grid);
     applyViewport(this.refs, ext.viewport);
     render(this.refs, this.store.doc);
+    this._rescaleCursors();
     this._syncSettingsInputs();
   }
 

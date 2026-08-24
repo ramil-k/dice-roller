@@ -236,7 +236,8 @@ token when it is placed and surface in the initiative tracker.
 - **Token card** — click a token with the select tool (without dragging), or
   click an initiative-tracker row, to open a small card next to it: name, HP,
   AC, initiative, and a ring-color picker (the six JSON Canvas preset colors
-  plus the kind default). The color is stored as the node's spec-level
+  plus the kind default); combatants added with a `link` also get the
+  creature-page anchor in the header. The color is stored as the node's spec-level
   `color`, so it survives export and syncs to the tracker markers. Click
   elsewhere or press Escape to dismiss.
 - **Token names** — hovering a token shows its name plate (there are no native
@@ -283,6 +284,14 @@ Concurrent edits to the *same* field resolve last-write-wins on that field
 only. Pan/zoom stays per device and is never synced. The engine ships in a
 separate lazy chunk (~45 KB gzip) that loads only when a room is configured
 or the panel is used.
+
+**Presence.** Room members see each other live: a named, colored cursor on
+the battle map for every peer whose pointer is over their map, and a colored
+ring on the tracker input a peer is currently editing (with their name as the
+tooltip). Names come from the site's optional tg-login profile (`dnd-tg-user`
+in `localStorage`, `first_name`/`username`) with a `Player NN` fallback;
+colors are derived from the session. Presence rides on Yjs awareness - it is
+ephemeral, never stored, and disappears when the peer disconnects.
 
 The server lives in
 [dice-roller-sync](https://github.com/ramil-k/dice-roller-sync)
