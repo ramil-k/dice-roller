@@ -85,6 +85,17 @@ const SCREEN_LABELS = {
   pool: 'Token pool',
   title: 'Initiative',
   dice: 'Roll dice',
+  sync: 'Sync',
+  syncCreate: 'Create a room from this encounter',
+  syncJoin: 'Join',
+  syncLeave: 'Disconnect',
+  syncCodePlaceholder: 'room-code',
+  syncOff: 'Not connected',
+  syncConnecting: 'Connecting to',
+  syncConnected: 'Room',
+  syncUnknownRoom: 'No such room',
+  syncFailed: 'Sync failed',
+  syncJoinConfirm: 'Joining a room replaces the current encounter with the room state. Continue?',
 };
 
 const TOOLS = [
@@ -175,7 +186,7 @@ const OVERLAY_CSS = `
       "tracker toolbar";
   }
   .mat-root:not([data-show-map]) { pointer-events: none; }
-  .mat-root:not([data-show-map]) :is(.screen-toolbar, .tracker-area, .token-card) { pointer-events: auto; }
+  .mat-root:not([data-show-map]) :is(.screen-toolbar, .tracker-area, .token-card, .sync-panel) { pointer-events: auto; }
   .mat-root:not([data-show-map]) .map-area { display: none; }
   /* nothing left to control — hide the toolbar too (Escape still closes,
      and the dock buttons underneath stay clickable to bring areas back) */
@@ -195,7 +206,7 @@ const OVERLAY_CSS = `
     display: grid;
     /* the 1fr tools row soaks up the free height, pushing the dock-style
        buttons to the bottom of the column, like the page dock */
-    grid-template-rows: 1fr min-content min-content min-content;
+    grid-template-rows: 1fr repeat(4, min-content);
     justify-items: center;
     padding: 0;
     background: var(--bm-surface);
@@ -209,9 +220,10 @@ const OVERLAY_CSS = `
   }
   /* explicit row per child — the layout does not depend on source order */
   .screen-toolbar > .tools { grid-row: 1; }
-  .screen-toolbar > .b-tracker { grid-row: 2; }
-  .screen-toolbar > .b-map { grid-row: 3; }
-  .screen-toolbar > .b-dice { grid-row: 4; }
+  .screen-toolbar > .b-sync { grid-row: 2; }
+  .screen-toolbar > .b-tracker { grid-row: 3; }
+  .screen-toolbar > .b-map { grid-row: 4; }
+  .screen-toolbar > .b-dice { grid-row: 5; }
   .screen-toolbar > button {
     display: inline-flex;
     align-items: center;
@@ -230,6 +242,8 @@ const OVERLAY_CSS = `
   .screen-toolbar > button:hover { background: rgb(from var(--bm-fg) r g b / 0.08); }
   .screen-toolbar > .b-tracker { --tb-accent: #f4c430; }
   .screen-toolbar > .b-map { --tb-accent: #5fb98d; }
+  .screen-toolbar > .b-sync { --tb-accent: #58b7d8; }
+  .screen-toolbar > .b-sync[data-state="connected"] { color: var(--tb-accent); }
   .screen-toolbar > button[aria-pressed="true"] { color: var(--tb-accent); }
   .screen-toolbar > .b-dice { color: #7d97e8; }
   .screen-toolbar > button .icon { width: 1.5rem; height: 1.5rem; }
@@ -423,6 +437,49 @@ const OVERLAY_CSS = `
   }
   .settings input[type="checkbox"] { width: 1rem; height: 1rem; accent-color: var(--bm-accent); }
 
+  /* --- sync panel (room create/join, opened from the sync button) ----------- */
+  .sync-panel[hidden] { display: none; }
+  .sync-panel {
+    position: absolute;
+    right: 3.6rem;
+    bottom: 0.75rem;
+    display: grid;
+    gap: 0.55rem;
+    width: 15.5rem;
+    background: var(--bm-surface);
+    border: 1px solid var(--bm-edge);
+    border-radius: 0.8rem;
+    box-shadow: 0 8px 24px rgb(0 0 0 / 0.35);
+    padding: 0.9rem 1rem;
+    font-size: 0.85rem;
+  }
+  .sync-panel h2 { margin: 0; font-size: 0.9rem; }
+  .sync-panel .sync-status { color: var(--bm-muted); }
+  .sync-panel .sync-status code { color: var(--bm-fg); user-select: all; }
+  .sync-panel .sync-error { color: #e0464c; }
+  .sync-panel .sync-row { display: flex; gap: 0.4rem; }
+  .sync-panel input {
+    flex: 1;
+    min-width: 0;
+    font: inherit;
+    color: var(--bm-fg);
+    background: rgb(from var(--bm-fg) r g b / 0.07);
+    border: 1px solid var(--bm-edge);
+    border-radius: 0.4rem;
+    padding: 0.25rem 0.4rem;
+  }
+  .sync-panel button {
+    font: inherit;
+    color: var(--bm-fg);
+    background: rgb(from var(--bm-fg) r g b / 0.07);
+    border: 1px solid var(--bm-edge);
+    border-radius: 0.4rem;
+    padding: 0.3rem 0.6rem;
+    cursor: pointer;
+  }
+  .sync-panel button:hover { background: rgb(from var(--bm-fg) r g b / 0.14); }
+  .sync-panel [hidden] { display: none; }
+
   /* --- token card (opened by clicking a token or a tracker row) ------------ */
   .token-card {
     position: absolute;
@@ -556,6 +613,10 @@ class BattleMatOverlay {
     this._buildShell();
     this._mount();
     document.addEventListener('keydown', this._onKeydown, true);
+    this._onSyncStatus = (e) => {
+      if (e.detail?.key === this.storageKey) this._renderSyncState(e.detail);
+    };
+    window.addEventListener('battle-mat-sync-status', this._onSyncStatus);
     this._syncFromDoc();
     this._screenButtons.get(show && AREAS.includes(show) ? show : 'map').focus();
   }
@@ -569,6 +630,7 @@ class BattleMatOverlay {
     this._unsubscribe = null;
     this.store?.flush();
     document.removeEventListener('keydown', this._onKeydown, true);
+    if (this._onSyncStatus) window.removeEventListener('battle-mat-sync-status', this._onSyncStatus);
     if (this.host.parentNode) this.host.parentNode.removeChild(this.host);
     if (this.opener && typeof this.opener.focus === 'function') this.opener.focus();
   }
@@ -621,7 +683,7 @@ class BattleMatOverlay {
 
     this._trackerEl = el('div', 'tracker-area');
 
-    rootEl.append(this._buildScreenToolbar(), mapArea, this._buildPool(), this._trackerEl, this._status);
+    rootEl.append(this._buildScreenToolbar(), mapArea, this._buildPool(), this._trackerEl, this._status, this._buildSyncPanel());
     this._buildFileInputs(rootEl);
     this.root.appendChild(rootEl);
     this._rootEl = rootEl;
@@ -819,6 +881,18 @@ class BattleMatOverlay {
     this._screenButtons = new Map();
     bar.append(this._buildToolbar());
 
+    // Sync: not an area toggle — opens the room panel; the accent lights up
+    // while a room is connected.
+    const sync = el('button', 'b-sync');
+    sync.type = 'button';
+    sync.setAttribute('aria-label', L.sync);
+    sync.title = L.sync;
+    sync.innerHTML = ICONS.sync;
+    sync.setAttribute('data-state', 'off');
+    sync.addEventListener('click', () => this._toggleSyncPanel());
+    this._syncBtn = sync;
+    bar.appendChild(sync);
+
     const toggles = [
       ['tracker', L.title], // the tracker's own panel title doubles as its name
       ['map', L.map],
@@ -871,6 +945,105 @@ class BattleMatOverlay {
     } finally {
       btn.removeAttribute('disabled');
       this._diceLoading = false;
+    }
+  }
+
+  // --- battle-mat sync (rooms) ---------------------------------------------
+  // The sync engine lives in its own chunk (it bundles yjs); load it on first
+  // use. The battle-toolbar shell auto-starts a configured session on page
+  // load, so this panel is only the control surface.
+  _syncMod() {
+    return (this._syncModule ??= import('./sync.js'));
+  }
+
+  _buildSyncPanel() {
+    const L = { ...SCREEN_LABELS, ...this.labels };
+    const panel = el('div', 'sync-panel');
+    panel.hidden = true;
+
+    const title = document.createElement('h2');
+    title.textContent = L.sync;
+
+    this._syncStatus = el('div', 'sync-status');
+    this._syncError = el('div', 'sync-error');
+    this._syncError.hidden = true;
+
+    const joinRow = el('div', 'sync-row');
+    this._syncInput = document.createElement('input');
+    this._syncInput.type = 'text';
+    this._syncInput.placeholder = L.syncCodePlaceholder;
+    this._syncInput.setAttribute('aria-label', L.syncCodePlaceholder);
+    this._syncInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') this._syncJoin();
+    });
+    const joinBtn = document.createElement('button');
+    joinBtn.type = 'button';
+    joinBtn.textContent = L.syncJoin;
+    joinBtn.addEventListener('click', () => this._syncJoin());
+    joinRow.append(this._syncInput, joinBtn);
+
+    const createBtn = document.createElement('button');
+    createBtn.type = 'button';
+    createBtn.textContent = L.syncCreate;
+    createBtn.addEventListener('click', () =>
+      this._syncRun((m) => m.createAndConnect(this.storageKey)),
+    );
+
+    this._syncLeave = document.createElement('button');
+    this._syncLeave.type = 'button';
+    this._syncLeave.textContent = L.syncLeave;
+    this._syncLeave.addEventListener('click', () => this._syncRun((m) => m.stopSync(this.storageKey)));
+
+    panel.append(title, this._syncStatus, this._syncError, joinRow, createBtn, this._syncLeave);
+    this._syncPanel = panel;
+    this._renderSyncState({ room: null, status: 'off' });
+    // a session may already be running (auto-started by the page shell)
+    try {
+      if (localStorage.getItem('battle-mat-sync')) {
+        this._syncMod().then((m) => this._renderSyncState(m.syncState(this.storageKey)));
+      }
+    } catch {
+      /* storage unavailable */
+    }
+    return panel;
+  }
+
+  _toggleSyncPanel(force) {
+    const show = force ?? this._syncPanel.hidden;
+    this._syncPanel.hidden = !show;
+    if (show) this._syncInput.focus();
+  }
+
+  _syncJoin() {
+    const code = this._syncInput.value.trim();
+    if (!code) return;
+    const L = { ...SCREEN_LABELS, ...this.labels };
+    if (!window.confirm(L.syncJoinConfirm)) return;
+    this._syncRun((m) => m.joinRoom(code, this.storageKey));
+  }
+
+  async _syncRun(action) {
+    const L = { ...SCREEN_LABELS, ...this.labels };
+    this._syncError.hidden = true;
+    try {
+      await action(await this._syncMod());
+    } catch (err) {
+      this._syncError.textContent = err?.message === 'unknown-room' ? L.syncUnknownRoom : L.syncFailed;
+      this._syncError.hidden = false;
+    }
+  }
+
+  _renderSyncState({ room, status }) {
+    const L = { ...SCREEN_LABELS, ...this.labels };
+    this._syncBtn.setAttribute('data-state', status);
+    this._syncLeave.hidden = status === 'off';
+    if (status === 'off') {
+      this._syncStatus.textContent = L.syncOff;
+    } else {
+      const word = status === 'connecting' ? L.syncConnecting : L.syncConnected;
+      const code = document.createElement('code');
+      code.textContent = room ?? '';
+      this._syncStatus.replaceChildren(`${word} `, code);
     }
   }
 
@@ -1424,6 +1597,12 @@ class BattleMatOverlay {
       }
       if (this._card) {
         this._closeCard();
+        e.stopPropagation();
+        return;
+      }
+      if (!this._syncPanel.hidden) {
+        this._toggleSyncPanel(false);
+        this._syncBtn.focus();
         e.stopPropagation();
         return;
       }

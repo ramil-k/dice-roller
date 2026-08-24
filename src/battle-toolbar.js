@@ -26,7 +26,11 @@
 //                and the tracker area: label-map, label-pool, label-dice
 //                plus the tracker's label-title, label-round, label-next,
 //                label-fill, label-reset, label-resetconfirm, label-empty,
-//                label-name, label-hp, label-ac, label-init, label-remove
+//                label-name, label-hp, label-ac, label-init, label-remove,
+//                and the sync panel's label-sync, label-synccreate,
+//                label-syncjoin, label-syncleave, label-synccodeplaceholder,
+//                label-syncoff, label-syncconnecting, label-syncconnected,
+//                label-syncunknownroom, label-syncfailed, label-syncjoinconfirm
 //                (defaults are English)
 
 const DOCK_CSS = `
@@ -110,7 +114,10 @@ const DIE_ICON = `
 const LABEL_KEYS = [
   'map', 'pool', 'dice',
   'title', 'round', 'next', 'fill', 'reset', 'resetConfirm', 'empty',
-  'name', 'hp', 'ac', 'init', 'remove',
+  'name', 'hp', 'ac', 'init', 'remove', 'link',
+  'sync', 'syncCreate', 'syncJoin', 'syncLeave', 'syncCodePlaceholder',
+  'syncOff', 'syncConnecting', 'syncConnected', 'syncUnknownRoom',
+  'syncFailed', 'syncJoinConfirm',
 ];
 
 export class BattleToolbar extends HTMLElement {
@@ -138,6 +145,19 @@ export class BattleToolbar extends HTMLElement {
     button('b-tracker', TRACKER_ICON, L.title ?? 'Initiative tracker', (btn) => this._openScreen(btn, { show: 'tracker', hide: 'map' }));
     button('b-mat', MAT_ICON, L.map ?? 'Battle map', (btn) => this._openScreen(btn, { show: 'map' }));
     button('b-dice', DIE_ICON, L.dice ?? 'Roll dice', (btn) => this._openDice(btn));
+
+    // Resume a configured battle-mat sync session without waiting for the
+    // battle screen to open. The cheap localStorage probe keeps the sync
+    // chunk (it bundles yjs) out of pages that never joined a room.
+    try {
+      if (localStorage.getItem('battle-mat-sync')) {
+        import('./battle-mat/sync.js')
+          .then((m) => m.maybeStartSync(this.getAttribute('storage-key') ?? undefined))
+          .catch((err) => console.error('battle-toolbar: failed to start sync', err));
+      }
+    } catch {
+      /* storage unavailable */
+    }
   }
 
   // Pool roster for the battle screen: property wins over the JSON attribute;

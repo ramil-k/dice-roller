@@ -129,7 +129,7 @@ import '@ramilkos/roll-dice/battle-toolbar';
 | `storage-key` | `localStorage` key of the shared encounter                   | `battle-mat-canvas` |
 | `roster`      | JSON array of extra pool tokens; the property wins           | `[]`                |
 | `dice`        | die sizes the builder tray offers, e.g. `"6 20"`             | `4 6 8 10 12 20`    |
-| `label-*`     | localized UI strings for the dock, the battle screen toolbar and the tracker area: `label-map`, `label-pool`, `label-dice` plus the tracker's `label-title`, `label-round`, `label-next`, `label-fill`, `label-reset`, `label-resetconfirm`, `label-empty`, `label-name`, `label-hp`, `label-ac`, `label-init`, `label-remove` | English |
+| `label-*`     | localized UI strings for the dock, the battle screen toolbar and the tracker area: `label-map`, `label-pool`, `label-dice` plus the tracker's `label-title`, `label-round`, `label-next`, `label-fill`, `label-reset`, `label-resetconfirm`, `label-empty`, `label-name`, `label-hp`, `label-ac`, `label-init`, `label-remove`, `label-link`, and the sync panel's `label-sync`, `label-synccreate`, `label-syncjoin`, `label-syncleave`, `label-synccodeplaceholder`, `label-syncoff`, `label-syncconnecting`, `label-syncconnected`, `label-syncunknownroom`, `label-syncfailed`, `label-syncjoinconfirm` | English |
 
 Unlike the other widgets the dock pins itself flush into the corner
 (`position: fixed; right: 0; bottom: 0`, only the top-left corner rounded);
@@ -255,9 +255,31 @@ places the token — handy on touch screens; Escape or a second avatar click
 disarms it.
 
 Escape cancels the in-flight action first (drawing, drag, placement), then
-closes an open settings panel, then the screen itself, returning focus to
-the button that opened it. With the dice overlay open on top, Escape closes
+closes an open sync or settings panel, then the screen itself, returning
+focus to the button that opened it. With the dice overlay open on top, Escape closes
 just the dice.
+
+### Sync rooms (play together)
+
+The sync button above the dock toggles opens the room panel. **Create a room
+from this encounter** asks the sync server for a room code (like
+`brave-otter-4821`) and seeds the room with the current encounter; share the
+code with the table. **Join** connects to an existing room - the room's state
+replaces the local encounter (the panel warns first). The code is the room's
+only secret; the session (`battle-mat-sync` in `localStorage`) survives
+reloads and reconnects on page load, battle screen open or not.
+
+While connected, the encounter is a CRDT (Yjs): everyone's edits merge live
+at the granularity of a single field of a single token, so one player moving
+their token while another edits a different token's hp never conflicts.
+Concurrent edits to the *same* field resolve last-write-wins on that field
+only. Pan/zoom stays per device and is never synced. The engine ships in a
+separate lazy chunk (~45 KB gzip) that loads only when a room is configured
+or the panel is used.
+
+The server lives in
+[dice-roller-sync](https://github.com/ramil-k/dice-roller-sync)
+(`https://universal.ramilkarimov.me:9443`).
 
 ### Storage format: JSON Canvas
 
@@ -269,7 +291,7 @@ an `x-battleMat` extension property that conforming tools preserve:
 
 | Entity          | Node `type` | Extension (`x-battleMat`)                              |
 | --------------- | ----------- | ------------------------------------------------------ |
-| Token           | `link`      | `{ kind: "token", name, source, tokenKind }`           |
+| Token           | `link`      | `{ kind: "token", name, source, tokenKind, link? }`    |
 | Attached image  | `link`      | `{ kind: "image" }` (`url` is a data URI)              |
 | Stroke / shape  | `text`      | `{ kind: "stroke", shape, points, strokeWidth }`       |
 
@@ -369,6 +391,7 @@ import '@ramilkos/roll-dice/add-to-battle';
 | `size`        | D&D size word (`tiny`…`gargantuan`) — token footprint   | `medium` (1 cell)   |
 | `hp`, `ac`    | combat stats shown in the tracker                       | —                   |
 | `init-mod`    | initiative modifier for the tracker's roll chip         | —                   |
+| `link`        | URL of the creature's page — tracker rows show an anchor | —                  |
 | `storage-key` | encounter key, must match the paired `<battle-mat>`     | `battle-mat-canvas` |
 | `label-added` | transient click feedback text                           | `Added`             |
 | `compact`     | icon-only mode for tight rows                           | off                 |
@@ -409,7 +432,7 @@ import '@ramilkos/roll-dice/initiative-tracker';
 | Attribute     | Values                                                 | Default             |
 | ------------- | ------------------------------------------------------ | ------------------- |
 | `storage-key` | must match the paired `<battle-mat>`                   | `battle-mat-canvas` |
-| `label-*`     | localized UI strings: `label-title`, `label-round`, `label-next`, `label-fill`, `label-reset`, `label-resetconfirm`, `label-empty`, `label-name`, `label-hp`, `label-ac`, `label-init`, `label-remove` | English |
+| `label-*`     | localized UI strings: `label-title`, `label-round`, `label-next`, `label-fill`, `label-reset`, `label-resetconfirm`, `label-empty`, `label-name`, `label-hp`, `label-ac`, `label-init`, `label-remove`, `label-link` | English |
 
 The widget is a normal in-flow element; its panel opens below the toggle
 button by default — see [Positioning](#positioning-the-widgets).
