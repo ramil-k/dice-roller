@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- Battle map images can be selected, resized and locked. Clicking an
+  attached image (select tool) draws a selection frame with eight resize
+  handles and opens a card next to it — the image's size in px and grid
+  cells, a lock toggle and a remove button. Corner handles keep the aspect
+  ratio (hold Shift to free them), edge handles pull one side; images never
+  snap to the grid. A locked image (`x-battleMat.locked: true`, carried by
+  exports and merged per field in sync rooms like the size) cannot be
+  moved, resized or erased — dragging it pans the map, a tap still selects
+  it (dashed frame, no handles) so it can be unlocked. Delete/Backspace
+  removes the selected unlocked image, Escape deselects. The card now
+  survives whole-document updates (sync-room edits, other tabs) as long as
+  its node still exists. Localizable via `label-image`, `label-lock`,
+  `label-unlock`, `label-imageremove` on `<battle-toolbar>`.
+
 - `<add-to-battle>` — new `link` attribute: the URL of the creature's page is
   stored on the token (`x-battleMat.link`) and initiative-tracker rows show it
   as a small external-link anchor next to the name (opens in a new tab; rows

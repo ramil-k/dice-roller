@@ -11,6 +11,9 @@ import {
   removeNode,
   getNode,
   moveNode,
+  resizeNode,
+  isLocked,
+  setLocked,
   nodeAt,
   resolveColor,
   validateCanvas,
@@ -51,6 +54,14 @@ describe('node constructors', () => {
     expect(img.type).toBe('link');
     expect(img.width).toBe(300);
     expect(nodeKind(img)).toBe('image');
+    expect(img[EXT].locked).toBeUndefined(); // absent, not false: exports stay minimal
+    expect(isLocked(img)).toBe(false);
+  });
+
+  it('makeImage can start locked', () => {
+    const img = makeImage({ x: 0, y: 0, width: 10, height: 10, url: 'u', locked: true });
+    expect(img[EXT].locked).toBe(true);
+    expect(isLocked(img)).toBe(true);
   });
 
   it('makeStroke computes the bounding box and normalizes points', () => {
@@ -92,6 +103,26 @@ describe('doc CRUD', () => {
 
   it('moveNode on a missing id reports false', () => {
     expect(moveNode(emptyDoc(), 'nope', 0, 0)).toBe(false);
+  });
+
+  it('resizeNode rounds and keeps the box at least 1px', () => {
+    const doc = emptyDoc();
+    const img = addNode(doc, makeImage({ x: 0, y: 0, width: 100, height: 50, url: 'u' }));
+    expect(resizeNode(doc, img.id, { x: 10.6, y: -3.2, width: 200.4, height: 0 })).toBe(true);
+    expect([img.x, img.y, img.width, img.height]).toEqual([11, -3, 200, 1]);
+    expect(resizeNode(doc, 'nope', { x: 0, y: 0, width: 1, height: 1 })).toBe(false);
+  });
+
+  it('setLocked sets the flag and clearing removes the key', () => {
+    const doc = emptyDoc();
+    const img = addNode(doc, makeImage({ x: 0, y: 0, width: 10, height: 10, url: 'u' }));
+    expect(setLocked(doc, img.id, true)).toBe(true);
+    expect(isLocked(img)).toBe(true);
+    expect(setLocked(doc, img.id, false)).toBe(true);
+    expect(isLocked(img)).toBe(false);
+    expect('locked' in img[EXT]).toBe(false);
+    expect(setLocked(doc, 'nope', true)).toBe(false);
+    expect(isLocked(null)).toBe(false);
   });
 });
 

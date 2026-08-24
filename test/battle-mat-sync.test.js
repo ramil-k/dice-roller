@@ -2,7 +2,7 @@
 // replication is simulated by exchanging Yjs updates between two docs.
 import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
-import { EXT, emptyDoc, makeToken } from '../src/battle-mat/canvas-doc.js';
+import { EXT, emptyDoc, makeImage, makeToken } from '../src/battle-mat/canvas-doc.js';
 import { hasContent, materializeDoc, parseRoomHash, pushDoc } from '../src/battle-mat/sync.js';
 
 const sampleDoc = () => {
@@ -11,7 +11,9 @@ const sampleDoc = () => {
   a.id = 'tok-a';
   const b = makeToken({ x: 128, y: 0, url: 'b.png', name: 'Goblin', tokenKind: 'monster', hp: 7 });
   b.id = 'tok-b';
-  doc.nodes.push(a, b);
+  const map = makeImage({ x: 0, y: 0, width: 800, height: 600, url: 'map.png' });
+  map.id = 'img-map';
+  doc.nodes.push(a, b, map);
   doc[EXT].grid.cellSize = 50;
   doc[EXT].combat.round = 3;
   return doc;
@@ -32,7 +34,7 @@ describe('battle-mat sync bridge', () => {
     expect(hasContent(ydoc)).toBe(true);
 
     const out = materializeDoc(ydoc, { viewport: { x: 5, y: 6, zoom: 2 } });
-    expect(out.nodes.map((n) => n.id)).toEqual(['tok-a', 'tok-b']);
+    expect(out.nodes.map((n) => n.id)).toEqual(['tok-a', 'tok-b', 'img-map']);
     expect(out.nodes[0][EXT].name).toBe('Bakhit');
     expect(out.nodes[0].x).toBe(64);
     expect(out[EXT].grid.cellSize).toBe(50);
@@ -96,11 +98,11 @@ describe('battle-mat sync bridge', () => {
     const doc = sampleDoc();
     pushDoc(y1, doc, null);
     // seq was assigned back into the plain doc
-    expect(doc.nodes.map((n) => n[EXT].seq)).toEqual([1, 2]);
+    expect(doc.nodes.map((n) => n[EXT].seq)).toEqual([1, 2, 3]);
 
     const y2 = new Y.Doc();
     replicate(y1, y2);
-    expect(materializeDoc(y2, {}).nodes.map((n) => n.id)).toEqual(['tok-a', 'tok-b']);
+    expect(materializeDoc(y2, {}).nodes.map((n) => n.id)).toEqual(['tok-a', 'tok-b', 'img-map']);
   });
 
   it('meta edits merge with node edits', () => {
@@ -126,6 +128,41 @@ describe('battle-mat sync bridge', () => {
     expect(out[EXT].combat.round).toBe(4);
     expect(out[EXT].combat.activeNodeId).toBe('tok-b');
     expect(out[EXT].grid.cellSize).toBe(70);
+  });
+
+  it('image lock and size are separate fields: a lock and a resize merge', () => {
+    const y1 = new Y.Doc();
+    const y2 = new Y.Doc();
+    const base = sampleDoc();
+    pushDoc(y1, base, null);
+    replicate(y1, y2);
+
+    // replica 1 pins the map down while replica 2 is still resizing it
+    const doc1 = materializeDoc(y1, {});
+    const locked = structuredClone(doc1);
+    locked.nodes.find((n) => n.id === 'img-map')[EXT].locked = true;
+    pushDoc(y1, locked, doc1);
+
+    const doc2 = materializeDoc(y2, {});
+    const resized = structuredClone(doc2);
+    Object.assign(resized.nodes.find((n) => n.id === 'img-map'), { x: -40, y: -30, width: 1000, height: 750 });
+    pushDoc(y2, resized, doc2);
+
+    syncBoth(y1, y2);
+    for (const y of [y1, y2]) {
+      const img = materializeDoc(y, {}).nodes.find((n) => n.id === 'img-map');
+      expect(img[EXT].locked).toBe(true);
+      expect([img.x, img.y, img.width, img.height]).toEqual([-40, -30, 1000, 750]);
+    }
+
+    // unlocking deletes the key rather than writing false
+    const doc1b = materializeDoc(y1, {});
+    const unlocked = structuredClone(doc1b);
+    delete unlocked.nodes.find((n) => n.id === 'img-map')[EXT].locked;
+    pushDoc(y1, unlocked, doc1b);
+    replicate(y1, y2);
+    const img2 = materializeDoc(y2, {}).nodes.find((n) => n.id === 'img-map');
+    expect('locked' in img2[EXT]).toBe(false);
   });
 });
 

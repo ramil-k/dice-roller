@@ -1,8 +1,11 @@
 // Pointer-interaction state machine for the battle mat. One controller owns
 // every pointer/wheel/key event on the map svg and dispatches on the active
-// tool. Modes: idle, panning, pinching, draggingNode, drawing, erasing,
-// measuring, placing (armed from the token pool), plus pool drags that start
-// on avatar buttons outside the svg.
+// tool. Modes: idle, panning, pinching, draggingNode, resizingNode (a
+// selected image's handle), drawing, erasing, measuring, placing (armed from
+// the token pool), plus pool drags that start on avatar buttons outside the
+// svg. Locked nodes (canvas-doc isLocked) neither drag, resize nor erase;
+// under the select tool a press on one pans the map, a tap still reports
+// onNodeClick so the overlay can select it and offer the unlock.
 //
 // The `ctx` contract (built by overlay.js):
 //   svg, root (shadow root, for elementFromPoint), refs (view.buildScene)
@@ -17,8 +20,9 @@
 
 import { screenToWorld, panBy, zoomAt, pinchUpdate } from './viewport.js';
 import { snapTokenOrigin, measure, formatMeasure } from './grid.js';
-import { getNode, moveNode, removeNode, makeStroke, addNode, nodeKind } from './canvas-doc.js';
-import { pathFrom, moveNodeEl, showRuler, hideRuler } from './view.js';
+import { getNode, moveNode, removeNode, resizeNode, makeStroke, addNode, nodeKind, isLocked } from './canvas-doc.js';
+import { resizeBox, isCorner } from './resize.js';
+import { pathFrom, moveNodeEl, resizeNodeEl, renderSelection, showRuler, hideRuler } from './view.js';
 import { svgEl, el } from './dom.js';
 
 const DRAW_TOOLS = ['pen', 'line', 'rect', 'ellipse'];
@@ -127,7 +131,18 @@ export function attachTools(ctx) {
     const hit = ctx.root.elementFromPoint(e.clientX, e.clientY);
     const g = hit?.closest?.('[data-id]');
     if (!g || !ctx.refs.world.contains(g)) return;
-    if (removeNode(ctx.getDoc(), g.getAttribute('data-id'))) ctx.commit();
+    const id = g.getAttribute('data-id');
+    if (isLocked(getNode(ctx.getDoc(), id))) return;
+    if (removeNode(ctx.getDoc(), id)) ctx.commit();
+  }
+
+  // ---- resize (selection handles) ------------------------------------------
+
+  const boxOf = (node) => ({ x: node.x, y: node.y, width: node.width, height: node.height });
+
+  function previewResize(id, box) {
+    resizeNodeEl(ctx.refs, id, box);
+    renderSelection(ctx.refs, { id, ...box }, { zoom: ctx.getViewport().zoom });
   }
 
   // ---- pointer handlers ----------------------------------------------------
@@ -158,8 +173,8 @@ export function attachTools(ctx) {
       return;
     }
 
-    const startPan = () => {
-      drag = { last: sp };
+    const startPan = (click = null) => {
+      drag = { last: sp, start: sp, click };
       setMode('panning');
     };
 
@@ -169,9 +184,19 @@ export function attachTools(ctx) {
     if (tool === 'pan') return startPan();
 
     if (tool === 'select') {
+      const handleEl = e.target.closest?.('[data-handle]');
+      const selected = handleEl && getNode(ctx.getDoc(), handleEl.getAttribute('data-selection-for'));
+      if (selected && !isLocked(selected)) {
+        drag = { id: selected.id, handle: handleEl.getAttribute('data-handle'), box: boxOf(selected), pos: null };
+        setMode('resizingNode');
+        return;
+      }
       const g = e.target.closest?.('[data-id]');
       const node = g && getNode(ctx.getDoc(), g.getAttribute('data-id'));
-      if (node) {
+      if (node && isLocked(node)) {
+        // pinned down: the press pans the map, a tap still selects it
+        startPan(node.id);
+      } else if (node) {
         const wp = worldPoint(e);
         drag = { id: node.id, dx: wp.x - node.x, dy: wp.y - node.y, pos: null, start: sp, moved: false };
         setMode('draggingNode');
@@ -232,6 +257,11 @@ export function attachTools(ctx) {
       }
       drag.pos = { x, y };
       moveNodeEl(ctx.refs, drag.id, x, y);
+    } else if (mode === 'resizingNode') {
+      // corners keep the aspect ratio, edges pull one side; Shift flips a corner
+      const keepAspect = isCorner(drag.handle) !== e.shiftKey;
+      drag.pos = resizeBox(drag.box, drag.handle, worldPoint(e), { keepAspect });
+      previewResize(drag.id, drag.pos);
     } else if (mode === 'drawing') {
       updateDrawing(worldPoint(e));
     } else if (mode === 'erasing') {
@@ -255,9 +285,22 @@ export function attachTools(ctx) {
       return;
     }
     if (mode === 'panning') {
+      const { click, start } = drag;
+      const sp = svgPoint(e);
       setMode('idle');
       drag = null;
       ctx.save();
+      // a press on a locked node that never travelled is a click on it
+      if (click && Math.hypot(sp.x - start.x, sp.y - start.y) < CLICK_SLOP) {
+        ctx.onNodeClick?.(click, e.clientX, e.clientY);
+      }
+    } else if (mode === 'resizingNode') {
+      if (drag.pos) {
+        resizeNode(ctx.getDoc(), drag.id, drag.pos);
+        ctx.commit();
+      }
+      drag = null;
+      setMode('idle');
     } else if (mode === 'draggingNode') {
       if (drag.pos) {
         moveNode(ctx.getDoc(), drag.id, drag.pos.x, drag.pos.y);
@@ -290,6 +333,10 @@ export function attachTools(ctx) {
     } else if (mode === 'draggingNode') {
       const node = getNode(ctx.getDoc(), drag.id);
       if (node) moveNodeEl(ctx.refs, node.id, node.x, node.y);
+      drag = null;
+      setMode('idle');
+    } else if (mode === 'resizingNode') {
+      previewResize(drag.id, drag.box);
       drag = null;
       setMode('idle');
     } else if (mode === 'measuring') {

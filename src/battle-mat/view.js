@@ -1,6 +1,7 @@
 // Scene rendering for the battle mat. The svg holds one `world` group that
 // carries the whole viewport transform; inside it, layers stack in paint
-// order: grid, attached images, drawings, tokens, live preview, ruler.
+// order: grid, attached images, drawings, tokens, labels, selection, live
+// preview, ruler.
 //
 // Every document node renders as `<g data-id="..." transform="translate(x y)">`
 // with its content drawn at the local origin, so dragging a node only touches
@@ -8,7 +9,8 @@
 // commits (add/remove/import), which is cheap at battle-map scale anyway.
 
 import { svgEl } from './dom.js';
-import { EXT, nodeKind, resolveColor } from './canvas-doc.js';
+import { EXT, nodeKind, resolveColor, isLocked } from './canvas-doc.js';
+import { HANDLES } from './resize.js';
 
 // The "infinite" grid: a pattern-filled rect this large covers any plausible
 // pan range without the cost of real geometry.
@@ -41,14 +43,17 @@ export function buildScene(svg) {
   // name plates live above every token so a neighboring token's image never
   // covers them
   const labels = svgEl('g', { class: 'layer-labels' });
+  // the selected image's frame and resize handles: above the tokens so the
+  // handles stay hittable, and outside the layers render() rebuilds
+  const selection = svgEl('g', { class: 'layer-selection' });
   const preview = svgEl('g', { class: 'layer-preview' });
   const ruler = svgEl('g', { class: 'layer-ruler' });
   ruler.setAttribute('display', 'none');
 
-  world.append(gridRect, images, drawings, tokens, labels, preview, ruler);
+  world.append(gridRect, images, drawings, tokens, labels, selection, preview, ruler);
   svg.append(defs, world);
 
-  return { svg, world, pattern, patternPath, gridRect, images, drawings, tokens, labels, preview, ruler };
+  return { svg, world, pattern, patternPath, gridRect, images, drawings, tokens, labels, selection, preview, ruler };
 }
 
 export function applyViewport(refs, vp) {
@@ -214,6 +219,8 @@ export function render(refs, doc) {
       refs.tokens.appendChild(g);
       refs.labels.appendChild(tokenLabel(node));
     } else if (kind === 'image') {
+      g.classList.add('image');
+      if (isLocked(node)) g.classList.add('locked');
       g.append(
         svgEl('image', {
           x: 0,
@@ -236,12 +243,87 @@ export function render(refs, doc) {
 }
 
 // Cheap per-frame position update while dragging; render() re-syncs on commit.
-// The token's name plate lives in the labels layer, so drag it along too.
+// The token's name plate lives in the labels layer, and a selected image's
+// frame in the selection layer, so drag those along too.
 export function moveNodeEl(refs, id, x, y) {
   const g = refs.world.querySelector(`[data-id="${CSS.escape(id)}"]`);
   if (g) g.setAttribute('transform', `translate(${x} ${y})`);
   const label = refs.labels.querySelector(`[data-label-for="${CSS.escape(id)}"]`);
   if (label) label.setAttribute('transform', `translate(${x} ${y})`);
+  const sel = refs.selection.querySelector(`[data-selection-for="${CSS.escape(id)}"]`);
+  if (sel) sel.setAttribute('transform', `translate(${x} ${y})`);
+}
+
+// Per-frame box update while resizing an image (the handle drag); the node's
+// content is drawn at the local origin, so only the transform and the
+// <image> size change. render() re-syncs on commit.
+export function resizeNodeEl(refs, id, box) {
+  const g = refs.world.querySelector(`[data-id="${CSS.escape(id)}"]`);
+  if (!g) return;
+  g.setAttribute('transform', `translate(${box.x} ${box.y})`);
+  const image = g.querySelector('image');
+  if (image) {
+    image.setAttribute('width', box.width);
+    image.setAttribute('height', box.height);
+  }
+}
+
+// Selection frame around a node box, with the eight resize handles unless
+// the node is locked (then the frame is dashed and there is nothing to
+// grab). Handles are counter-scaled by the zoom so they keep a screen size;
+// each visible square sits inside a larger transparent hit square (touch),
+// both tagged data-handle / data-selection-for for the tools controller.
+const HANDLE_SIZE = 10; // screen px
+const HANDLE_HIT = 22;
+
+const HANDLE_POS = {
+  nw: [0, 0], n: [0.5, 0], ne: [1, 0], e: [1, 0.5],
+  se: [1, 1], s: [0.5, 1], sw: [0, 1], w: [0, 0.5],
+};
+
+export function renderSelection(refs, box, { zoom = 1, locked = false } = {}) {
+  const g = svgEl('g', {
+    class: `selection${locked ? ' locked' : ''}`,
+    'data-selection-for': box.id,
+    transform: `translate(${box.x} ${box.y})`,
+  });
+  const frame = svgEl('rect', {
+    class: `sel-frame${locked ? ' locked' : ''}`,
+    x: 0,
+    y: 0,
+    width: box.width,
+    height: box.height,
+    'stroke-width': 1.5 / zoom,
+  });
+  if (locked) frame.setAttribute('stroke-dasharray', `${6 / zoom} ${4 / zoom}`);
+  g.appendChild(frame);
+  if (!locked) {
+    const size = HANDLE_SIZE / zoom;
+    const hit = HANDLE_HIT / zoom;
+    for (const handle of HANDLES) {
+      const [fx, fy] = HANDLE_POS[handle];
+      const cx = box.width * fx;
+      const cy = box.height * fy;
+      const common = { 'data-handle': handle, 'data-selection-for': box.id };
+      g.append(
+        svgEl('rect', { ...common, class: 'sel-hit', x: cx - hit / 2, y: cy - hit / 2, width: hit, height: hit }),
+        svgEl('rect', {
+          ...common,
+          class: 'sel-handle',
+          x: cx - size / 2,
+          y: cy - size / 2,
+          width: size,
+          height: size,
+          'stroke-width': 1.5 / zoom,
+        }),
+      );
+    }
+  }
+  refs.selection.replaceChildren(g);
+}
+
+export function clearSelection(refs) {
+  refs.selection.replaceChildren();
 }
 
 // Ruler overlay: a line with end ticks and a floating label. The label's

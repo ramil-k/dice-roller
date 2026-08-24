@@ -120,8 +120,11 @@ export function makeToken({ x, y, size = 64, url, name = '', source = 'roster', 
   return node;
 }
 
-export function makeImage({ x, y, width, height, url }) {
-  return {
+// `locked` images cannot be moved, resized or erased on the mat (a map
+// background the DM pins down); the flag lives in the extension so it
+// travels with exports and sync rooms.
+export function makeImage({ x, y, width, height, url, locked = false }) {
+  const node = {
     id: newId(),
     type: 'link',
     x: round(x),
@@ -131,6 +134,23 @@ export function makeImage({ x, y, width, height, url }) {
     url,
     [EXT]: { kind: 'image' },
   };
+  if (locked) node[EXT].locked = true;
+  return node;
+}
+
+export function isLocked(node) {
+  return node?.[EXT]?.locked === true;
+}
+
+// Set or clear the lock. Clearing deletes the key (rather than storing
+// false) so the sync bridge sends a field delete and exports stay minimal.
+export function setLocked(doc, id, locked) {
+  const node = getNode(doc, id);
+  if (!node) return false;
+  const ext = (node[EXT] ??= {});
+  if (locked) ext.locked = true;
+  else delete ext.locked;
+  return true;
 }
 
 // Build a stroke/shape node from absolute world-coordinate points. For pen and
@@ -196,6 +216,18 @@ export function moveNode(doc, id, x, y) {
   if (!node) return false;
   node.x = round(x);
   node.y = round(y);
+  return true;
+}
+
+// Replace a node's box (resize handles). Same rounding and >= 1 clamp as the
+// constructors, so a resized node stays a valid canvas node.
+export function resizeNode(doc, id, { x, y, width, height }) {
+  const node = getNode(doc, id);
+  if (!node) return false;
+  node.x = round(x);
+  node.y = round(y);
+  node.width = Math.max(1, round(width));
+  node.height = Math.max(1, round(height));
   return true;
 }
 

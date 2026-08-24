@@ -24,8 +24,11 @@ import {
   emptyDoc,
   getExt,
   getNode,
+  removeNode,
   nodeKind,
   addNode,
+  isLocked,
+  setLocked,
   makeToken,
   makeImage,
   validateCanvas,
@@ -48,7 +51,7 @@ import {
 } from './combat.js';
 import { getAdjectives } from './adjectives.js';
 import { CATEGORIES, iconUrl } from './registry.js';
-import { buildScene, render, applyViewport, updateGrid } from './view.js';
+import { buildScene, render, applyViewport, updateGrid, renderSelection, clearSelection } from './view.js';
 import { screenToWorld } from './viewport.js';
 import { AWARENESS_EVENT, publishPresence, safeColor, safeName } from './presence.js';
 import { attachTools } from './tools.js';
@@ -102,6 +105,10 @@ const SCREEN_LABELS = {
   syncCopied: 'Link copied',
   syncName: 'Your name',
   syncColor: 'Your color',
+  image: 'Image',
+  lock: 'Lock',
+  unlock: 'Unlock',
+  imageRemove: 'Remove image',
 };
 
 const TOOLS = [
@@ -271,6 +278,17 @@ const OVERLAY_CSS = `
   .token-player .token-ring, .token-ring.token-player { stroke: var(--bm-token-player); }
   .token-monster .token-ring, .token-ring.token-monster { stroke: var(--bm-token-monster); }
   .layer-tokens .token { cursor: grab; }
+  .mat[data-tool="select"] .layer-images .image { cursor: grab; }
+  .mat[data-tool="select"] .layer-images .image.locked { cursor: default; }
+  /* selection frame + resize handles (view.js renderSelection) */
+  .sel-frame { fill: none; stroke: var(--bm-accent); pointer-events: none; }
+  .sel-frame.locked { stroke: var(--bm-muted); }
+  .sel-hit { fill: transparent; }
+  .sel-handle { fill: var(--bm-bg); stroke: var(--bm-accent); }
+  [data-handle="nw"], [data-handle="se"] { cursor: nwse-resize; }
+  [data-handle="ne"], [data-handle="sw"] { cursor: nesw-resize; }
+  [data-handle="n"], [data-handle="s"] { cursor: ns-resize; }
+  [data-handle="e"], [data-handle="w"] { cursor: ew-resize; }
   .ruler-line { stroke: var(--bm-accent); }
   .ruler-end { fill: var(--bm-accent); }
   .ruler-label {
@@ -544,8 +562,14 @@ const OVERLAY_CSS = `
   .token-card .tc-stat { display: inline-flex; align-items: baseline; gap: 0.3em; }
   .token-card .tc-label { color: var(--bm-muted); font-size: 0.85em; }
   .token-card .tc-value { font-weight: 650; font-variant-numeric: tabular-nums; }
-  .token-card .tc-sizes { display: flex; gap: 0.35rem; margin-bottom: 0.55rem; }
-  .token-card .tc-sizes button {
+  .token-card .tc-head .icon { width: 1.1em; height: 1.1em; flex: 0 0 auto; }
+  .token-card .tc-size { color: var(--bm-muted); font-size: 0.85em; margin-bottom: 0.55rem; font-variant-numeric: tabular-nums; }
+  .token-card .tc-sizes, .token-card .tc-actions { display: flex; gap: 0.35rem; margin-bottom: 0.55rem; }
+  .token-card .tc-actions { margin-bottom: 0; }
+  .token-card .tc-actions button { display: inline-flex; align-items: center; gap: 0.35em; }
+  .token-card .tc-actions .icon { width: 1.1em; height: 1.1em; }
+  .token-card .tc-actions button:disabled { opacity: 0.45; cursor: default; }
+  .token-card :is(.tc-sizes, .tc-actions) button {
     font: inherit;
     font-size: 0.8em;
     font-weight: 600;
@@ -556,13 +580,13 @@ const OVERLAY_CSS = `
     color: var(--bm-muted);
     cursor: pointer;
   }
-  .token-card .tc-sizes button:hover { color: var(--bm-fg); }
-  .token-card .tc-sizes button[aria-pressed="true"] {
+  .token-card :is(.tc-sizes, .tc-actions) button:hover { color: var(--bm-fg); }
+  .token-card :is(.tc-sizes, .tc-actions) button[aria-pressed="true"] {
     color: var(--bm-bg);
     background: var(--bm-accent);
     border-color: var(--bm-accent);
   }
-  .token-card .tc-sizes button:focus-visible { outline: 2px solid var(--bm-accent); outline-offset: 2px; }
+  .token-card :is(.tc-sizes, .tc-actions) button:focus-visible { outline: 2px solid var(--bm-accent); outline-offset: 2px; }
   .token-card .tc-swatches { display: flex; gap: 0.35rem; }
   .token-card .tc-swatches button {
     width: 1.15rem;
@@ -791,8 +815,10 @@ class BattleMatOverlay {
   // ---- token card ------------------------------------------------------------
 
   // A small card next to a clicked token (on the map) or tracker row: the
-  // combatant's stats at a glance and a ring-color picker. One card at a
-  // time; a second click on the same token toggles it away.
+  // combatant's stats at a glance and a ring-color picker. Images get the
+  // same card with their size, the lock toggle and a remove button — an open
+  // image card *is* the map selection (frame + handles, _drawSelection). One
+  // card at a time; a second click on the same node toggles it away.
   _openCard(id, cx, cy) {
     if (this._cardId === id && this._card) {
       this._closeCard();
@@ -807,6 +833,7 @@ class BattleMatOverlay {
     this._cardId = id;
     this._renderCard(node);
     this._rootEl.appendChild(card);
+    this._drawSelection();
 
     // next to the click point, clamped into the viewport
     const pad = 8;
@@ -814,12 +841,13 @@ class BattleMatOverlay {
     card.style.left = `${Math.max(pad, Math.min(cx + 12, window.innerWidth - r.width - pad))}px`;
     card.style.top = `${Math.max(pad, Math.min(cy + 12, window.innerHeight - r.height - pad))}px`;
 
-    // any press outside dismisses it — except on tokens and tracker rows,
-    // whose own click handlers decide (toggle same / move to another)
+    // any press outside dismisses it — except on tokens, images and tracker
+    // rows, whose own click handlers decide (toggle same / move to another),
+    // and on the resize handles of the selected image
     this._cardDismiss = (e) => {
       const t = e.composedPath()[0];
       if (!(t instanceof Element)) return;
-      if (card.contains(t) || t.closest('.token') || t.closest('.trk-list li')) return;
+      if (card.contains(t) || t.closest('.token, .image, [data-handle], .trk-list li')) return;
       this._closeCard();
     };
     this.root.addEventListener('pointerdown', this._cardDismiss, true);
@@ -832,6 +860,26 @@ class BattleMatOverlay {
     this._cardId = null;
     this.root.removeEventListener('pointerdown', this._cardDismiss, true);
     this._cardDismiss = null;
+    this._drawSelection();
+  }
+
+  // The frame and handles for the card's node when it is an image; the
+  // handle size is counter-scaled by the zoom, so redraw on viewport changes
+  // too (see the tools ctx).
+  _drawSelection() {
+    if (!this.refs) return;
+    const node = this._card ? getNode(this.store.doc, this._cardId) : null;
+    if (node && nodeKind(node) === 'image') {
+      renderSelection(this.refs, node, { zoom: getExt(this.store.doc).viewport.zoom, locked: isLocked(node) });
+    } else {
+      clearSelection(this.refs);
+    }
+  }
+
+  // The selected image, if the card shows one (locked or not).
+  _selectedImage() {
+    const node = this._card ? getNode(this.store.doc, this._cardId) : null;
+    return node && nodeKind(node) === 'image' ? node : null;
   }
 
   // Re-read the node on store changes so tracker edits show up live; the
@@ -839,11 +887,16 @@ class BattleMatOverlay {
   _refreshCard() {
     if (!this._card) return;
     const node = getNode(this.store.doc, this._cardId);
-    if (!node) this._closeCard();
-    else this._renderCard(node);
+    if (!node) {
+      this._closeCard();
+    } else {
+      this._renderCard(node);
+      this._drawSelection();
+    }
   }
 
   _renderCard(node) {
+    if (nodeKind(node) === 'image') return this._renderImageCard(node);
     const card = this._card;
     const ext = node[EXT];
     const L = { hp: 'HP', ac: 'AC', init: 'Init', link: 'Open page', ...this.labels };
@@ -937,6 +990,61 @@ class BattleMatOverlay {
     });
     swatches.appendChild(reset);
     card.appendChild(swatches);
+  }
+
+  // Image card: size in world px and grid cells, the lock toggle and remove.
+  // Handlers re-read the node by id at click time — a sync update replaces
+  // the doc wholesale, and the card survives that (see _onStoreEvent).
+  _renderImageCard(node) {
+    const card = this._card;
+    const L = { ...SCREEN_LABELS, ...this.labels };
+    const locked = isLocked(node);
+    card.replaceChildren();
+
+    const head = el('div', 'tc-head');
+    head.innerHTML = ICONS.image;
+    head.append(el('span', 'tc-name', L.image));
+    card.appendChild(head);
+
+    const { cellSize } = getExt(this.store.doc).grid;
+    const cells = (n) => Math.round((n / cellSize) * 10) / 10;
+    card.appendChild(
+      el('div', 'tc-size', `${node.width}×${node.height} px · ${cells(node.width)}×${cells(node.height)}`),
+    );
+
+    const actions = el('div', 'tc-actions');
+    const current = () => getNode(this.store.doc, this._cardId);
+
+    const lockBtn = el('button');
+    lockBtn.type = 'button';
+    lockBtn.innerHTML = locked ? ICONS.lock : ICONS.unlock;
+    lockBtn.append(el('span', null, locked ? L.unlock : L.lock));
+    lockBtn.setAttribute('aria-pressed', String(locked));
+    lockBtn.title = locked ? L.unlock : L.lock;
+    lockBtn.addEventListener('click', () => {
+      const n = current();
+      if (!n) return;
+      setLocked(this.store.doc, n.id, !isLocked(n));
+      this._commit(); // change event re-renders the map, the frame and this card
+    });
+    actions.appendChild(lockBtn);
+
+    const removeBtn = el('button');
+    removeBtn.type = 'button';
+    removeBtn.innerHTML = ICONS.trash;
+    removeBtn.append(el('span', null, L.imageRemove));
+    removeBtn.title = L.imageRemove;
+    removeBtn.disabled = locked;
+    removeBtn.addEventListener('click', () => this._removeSelectedImage());
+    actions.appendChild(removeBtn);
+    card.appendChild(actions);
+  }
+
+  _removeSelectedImage() {
+    const node = this._selectedImage();
+    if (!node || isLocked(node)) return;
+    removeNode(this.store.doc, node.id);
+    this._commit(); // the card closes via _refreshCard: its node is gone
   }
 
   // The right toolbar column: the map tools group at the top (which also
@@ -1558,6 +1666,7 @@ class BattleMatOverlay {
         getExt(this.store.doc).viewport = vp;
         applyViewport(this.refs, vp);
         this._rescaleCursors();
+        this._drawSelection();
       },
       commit: () => this._commit(),
       save: () => this._save(),
@@ -1574,8 +1683,9 @@ class BattleMatOverlay {
         this.svg.setAttribute('data-mode', entry ? 'placing' : 'idle');
       },
       onNodeClick: (id, x, y) => {
-        // the card is for combatants; clicks on strokes/images just deselect
-        if (nodeKind(getNode(this.store.doc, id)) === 'token') this._openCard(id, x, y);
+        // combatants and images get a card; clicks on strokes just deselect
+        const kind = nodeKind(getNode(this.store.doc, id));
+        if (kind === 'token' || kind === 'image') this._openCard(id, x, y);
         else this._closeCard();
       },
     });
@@ -1653,7 +1763,10 @@ class BattleMatOverlay {
     } else if (e.full) {
       this._syncFromDoc();
       this._rebuildPool();
-      this._closeCard(); // the doc was replaced wholesale — the node ref is gone
+      // the doc was replaced wholesale (import, another tab, a sync-room
+      // update): re-read the card's node by id so a peer's edit does not
+      // drop the selection; the card closes only if its node is gone
+      this._refreshCard();
     } else {
       render(this.refs, this.store.doc);
       this._rebuildPool();
@@ -1828,6 +1941,14 @@ class BattleMatOverlay {
       e.stopPropagation();
     } else if (e.key === 'Tab') {
       this._trapFocus(e);
+    } else if (e.key === 'Delete' || e.key === 'Backspace') {
+      const tag = e.composedPath()[0]?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      if (this._selectedImage()) {
+        this._removeSelectedImage(); // no-op while the image is locked
+        e.preventDefault();
+        e.stopPropagation();
+      }
     }
   }
 

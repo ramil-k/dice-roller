@@ -32,7 +32,8 @@
 //                label-syncoff, label-syncconnecting, label-syncconnected,
 //                label-syncunknownroom, label-syncfailed, label-syncjoinconfirm,
 //                label-synccopylink, label-synccopied, label-syncname,
-//                label-synccolor
+//                label-synccolor, and the image card's label-image,
+//                label-lock, label-unlock, label-imageremove
 //                (defaults are English)
 
 const DOCK_CSS = `
@@ -121,6 +122,7 @@ const LABEL_KEYS = [
   'syncOff', 'syncConnecting', 'syncConnected', 'syncUnknownRoom',
   'syncFailed', 'syncJoinConfirm', 'syncCopyLink', 'syncCopied',
   'syncName', 'syncColor',
+  'image', 'lock', 'unlock', 'imageRemove',
 ];
 
 export class BattleToolbar extends HTMLElement {
