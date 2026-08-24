@@ -100,6 +100,8 @@ const SCREEN_LABELS = {
   syncJoinConfirm: 'Joining a room replaces the current encounter with the room state. Continue?',
   syncCopyLink: 'Copy invite link',
   syncCopied: 'Link copied',
+  syncName: 'Your name',
+  syncColor: 'Your color',
 };
 
 const TOOLS = [
@@ -483,6 +485,15 @@ const OVERLAY_CSS = `
     cursor: pointer;
   }
   .sync-panel button:hover { background: rgb(from var(--bm-fg) r g b / 0.14); }
+  .sync-panel .profile-swatches { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+  .sync-panel .profile-swatches button {
+    width: 1.15rem;
+    height: 1.15rem;
+    padding: 0;
+    border: 2px solid transparent;
+    border-radius: 50%;
+  }
+  .sync-panel .profile-swatches button[aria-pressed="true"] { border-color: var(--bm-fg); }
   .sync-panel [hidden] { display: none; }
 
   /* --- remote cursors (sync rooms) ------------------------------------------ */
@@ -1031,6 +1042,23 @@ class BattleMatOverlay {
     this._syncError = el('div', 'sync-error');
     this._syncError.hidden = true;
 
+    // identity: name and color, saved to the shared profile and pushed into
+    // the live session at once (peers see the change immediately); the
+    // swatch buttons are filled from the sync module when the panel opens
+    this._syncNameInput = document.createElement('input');
+    this._syncNameInput.type = 'text';
+    this._syncNameInput.maxLength = 24;
+    this._syncNameInput.placeholder = L.syncName;
+    this._syncNameInput.setAttribute('aria-label', L.syncName);
+    this._syncNameInput.addEventListener('change', () =>
+      this._syncRun(async (m) => {
+        m.setProfile({ name: this._syncNameInput.value.trim() || null });
+      }),
+    );
+    this._syncSwatches = el('div', 'profile-swatches');
+    this._syncSwatches.setAttribute('role', 'group');
+    this._syncSwatches.setAttribute('aria-label', L.syncColor);
+
     const joinRow = el('div', 'sync-row');
     this._syncInput = document.createElement('input');
     this._syncInput.type = 'text';
@@ -1062,7 +1090,17 @@ class BattleMatOverlay {
     this._syncLeave.textContent = L.syncLeave;
     this._syncLeave.addEventListener('click', () => this._syncRun((m) => m.stopSync(this.storageKey)));
 
-    panel.append(title, this._syncStatus, this._syncError, joinRow, createBtn, this._syncCopy, this._syncLeave);
+    panel.append(
+      title,
+      this._syncStatus,
+      this._syncError,
+      this._syncNameInput,
+      this._syncSwatches,
+      joinRow,
+      createBtn,
+      this._syncCopy,
+      this._syncLeave,
+    );
     this._syncPanel = panel;
     this._renderSyncState({ room: null, status: 'off' });
     // a session may already be running (auto-started by the page shell)
@@ -1079,7 +1117,39 @@ class BattleMatOverlay {
   _toggleSyncPanel(force) {
     const show = force ?? this._syncPanel.hidden;
     this._syncPanel.hidden = !show;
-    if (show) this._syncInput.focus();
+    if (show) {
+      this._fillSyncProfile();
+      this._syncInput.focus();
+    }
+  }
+
+  // Prefill the name field and build/refresh the color swatches from the
+  // stored profile. A picked swatch toggles off back to the automatic color.
+  async _fillSyncProfile() {
+    const m = await this._syncMod();
+    if (this._syncSwatches.childElementCount === 0) {
+      for (const color of m.USER_COLORS) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.style.background = color;
+        b.dataset.color = color;
+        b.setAttribute('aria-label', color);
+        b.addEventListener('click', () =>
+          this._syncRun(async (mm) => {
+            mm.setProfile({ color: mm.getProfile().color === color ? null : color });
+            this._fillSyncProfile();
+          }),
+        );
+        this._syncSwatches.appendChild(b);
+      }
+    }
+    const prof = m.getProfile();
+    if (this.root.activeElement !== this._syncNameInput) {
+      this._syncNameInput.value = prof.name ?? '';
+    }
+    for (const b of this._syncSwatches.children) {
+      b.setAttribute('aria-pressed', String(b.dataset.color === prof.color));
+    }
   }
 
   _syncJoin() {

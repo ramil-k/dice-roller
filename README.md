@@ -129,7 +129,7 @@ import '@ramilkos/roll-dice/battle-toolbar';
 | `storage-key` | `localStorage` key of the shared encounter                   | `battle-mat-canvas` |
 | `roster`      | JSON array of extra pool tokens; the property wins           | `[]`                |
 | `dice`        | die sizes the builder tray offers, e.g. `"6 20"`             | `4 6 8 10 12 20`    |
-| `label-*`     | localized UI strings for the dock, the battle screen toolbar and the tracker area: `label-map`, `label-pool`, `label-dice` plus the tracker's `label-title`, `label-round`, `label-next`, `label-fill`, `label-reset`, `label-resetconfirm`, `label-empty`, `label-name`, `label-hp`, `label-ac`, `label-init`, `label-remove`, `label-link`, and the sync panel's `label-sync`, `label-synccreate`, `label-syncjoin`, `label-syncleave`, `label-synccodeplaceholder`, `label-syncoff`, `label-syncconnecting`, `label-syncconnected`, `label-syncunknownroom`, `label-syncfailed`, `label-syncjoinconfirm`, `label-synccopylink`, `label-synccopied` | English |
+| `label-*`     | localized UI strings for the dock, the battle screen toolbar and the tracker area: `label-map`, `label-pool`, `label-dice` plus the tracker's `label-title`, `label-round`, `label-next`, `label-fill`, `label-reset`, `label-resetconfirm`, `label-empty`, `label-name`, `label-hp`, `label-ac`, `label-init`, `label-remove`, `label-link`, and the sync panel's `label-sync`, `label-synccreate`, `label-syncjoin`, `label-syncleave`, `label-synccodeplaceholder`, `label-syncoff`, `label-syncconnecting`, `label-syncconnected`, `label-syncunknownroom`, `label-syncfailed`, `label-syncjoinconfirm`, `label-synccopylink`, `label-synccopied`, `label-syncname`, `label-synccolor` | English |
 
 Unlike the other widgets the dock pins itself flush into the corner
 (`position: fixed; right: 0; bottom: 0`, only the top-left corner rounded);
@@ -288,10 +288,16 @@ or the panel is used.
 **Presence.** Room members see each other live: a named, colored cursor on
 the battle map for every peer whose pointer is over their map, and a colored
 ring on the tracker input a peer is currently editing (with their name as the
-tooltip). Names come from the site's optional tg-login profile (`dnd-tg-user`
-in `localStorage`, `first_name`/`username`) with a `Player NN` fallback;
-colors are derived from the session. Presence rides on Yjs awareness - it is
-ephemeral, never stored, and disappears when the peer disconnects.
+tooltip). The sync panel has a name field and a color palette
+(`battle-mat-profile` in `localStorage`); without them the name falls back to
+the site's optional tg-login profile (`dnd-tg-user`, `first_name`/`username`)
+and the color derives from the session. Every player's name is additionally
+prefixed with an instance adjective from the same localizable list that names
+duplicate combatants (chosen by session), so two players with the same name
+still read differently - and a player with no name at all is just the
+adjective. Profile edits apply to the live session immediately. Presence
+rides on Yjs awareness - it is ephemeral, never stored, and disappears when
+the peer disconnects.
 
 The server lives in
 [dice-roller-sync](https://github.com/ramil-k/dice-roller-sync)

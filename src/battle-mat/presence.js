@@ -23,4 +23,4 @@ export const publishPresence = (key, patch) => {
 export const safeColor = (c, fallback = '#8a94ab') =>
   typeof c === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(c) ? c : fallback;
 
-export const safeName = (n) => (typeof n === 'string' ? n.slice(0, 24) : '');
+export const safeName = (n) => (typeof n === 'string' ? n.slice(0, 32) : '');

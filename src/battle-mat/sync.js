@@ -28,6 +28,7 @@ import { WebsocketProvider } from 'y-websocket';
 import { DEFAULT_KEY, getStore } from './store.js';
 import { EXT } from './canvas-doc.js';
 import { AWARENESS_EVENT, PRESENCE_EVENT } from './presence.js';
+import { getAdjectives } from './adjectives.js';
 
 export const SYNC_KEY = 'battle-mat-sync';
 export const DEFAULT_SERVER = 'https://universal.ramilkarimov.me:9443';
@@ -36,23 +37,70 @@ const LOCAL_ORIGIN = 'battle-mat-local';
 const PUSH_DEBOUNCE = 250;
 const CURSOR_THROTTLE = 40; // ms between cursor awareness broadcasts
 
-// Presence identity: no accounts anywhere, so the name comes from the site's
-// optional tg-login profile (dnd-tg-user in localStorage) with a numbered
-// fallback, and the color is derived from the Yjs client id.
-const USER_COLORS = ['#e0464c', '#f4a83a', '#f4c430', '#5fb98d', '#58b7d8', '#7d97e8', '#b078d8', '#d86fa8'];
+// Presence identity: no accounts anywhere. The sync panel lets the player
+// pick a name and a color (persisted in PROFILE_KEY); without them the name
+// falls back to the site's optional tg-login profile (dnd-tg-user), and the
+// color derives from the Yjs client id. Every player additionally gets an
+// instance adjective (the same localizable list that names duplicate
+// combatants), chosen by client id - so two people who are both "Рамиль"
+// still read differently at the table, and a player with no name at all is
+// just "Свирепый".
+export const USER_COLORS = ['#e0464c', '#f4a83a', '#f4c430', '#5fb98d', '#58b7d8', '#7d97e8', '#b078d8', '#d86fa8'];
+export const PROFILE_KEY = 'battle-mat-profile';
+
+function loadProfile(storage = globalThis.localStorage) {
+  try {
+    const p = JSON.parse(storage?.getItem(PROFILE_KEY) ?? 'null');
+    return p && typeof p === 'object' ? p : {};
+  } catch {
+    return {};
+  }
+}
+
+// The stored overrides only - the UI prefills its fields from this.
+export function getProfile() {
+  return loadProfile();
+}
+
+// Merge {name?, color?} into the stored profile (null clears a field) and
+// push the new identity into every live session, so peers see the rename
+// or recolor immediately.
+export function setProfile(patch, storage = globalThis.localStorage) {
+  const next = { ...loadProfile(storage), ...patch };
+  for (const k of ['name', 'color']) {
+    if (next[k] == null || next[k] === '') delete next[k];
+  }
+  try {
+    if (Object.keys(next).length > 0) storage.setItem(PROFILE_KEY, JSON.stringify(next));
+    else storage.removeItem(PROFILE_KEY);
+  } catch {
+    /* storage unavailable - the change still applies to live sessions */
+  }
+  for (const session of sessions.values()) {
+    session.provider.awareness.setLocalStateField('user', localUser(session.ydoc.clientID));
+  }
+  return next;
+}
 
 function localUser(clientId) {
-  let name = null;
-  try {
-    const u = JSON.parse(globalThis.localStorage?.getItem('dnd-tg-user') ?? 'null');
-    name = u?.first_name ?? u?.username ?? null;
-  } catch {
-    /* no profile - fall through */
+  const prof = loadProfile();
+  let name = typeof prof.name === 'string' && prof.name.trim() !== '' ? prof.name.trim() : null;
+  if (name === null) {
+    try {
+      const u = JSON.parse(globalThis.localStorage?.getItem('dnd-tg-user') ?? 'null');
+      name = u?.first_name ?? u?.username ?? null;
+    } catch {
+      /* no tg profile - fall through */
+    }
   }
-  return {
-    name: (name ?? `Player ${(clientId % 90) + 10}`).slice(0, 24),
-    color: USER_COLORS[clientId % USER_COLORS.length],
-  };
+  const color =
+    typeof prof.color === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(prof.color)
+      ? prof.color
+      : USER_COLORS[clientId % USER_COLORS.length];
+  const adjectives = getAdjectives();
+  const adjective = adjectives.length > 0 ? adjectives[clientId % adjectives.length] : null;
+  const display = [adjective, name].filter(Boolean).join(' ') || `Player ${(clientId % 90) + 10}`;
+  return { name: display.slice(0, 32), color };
 }
 
 // ---------------------------------------------------------------------------

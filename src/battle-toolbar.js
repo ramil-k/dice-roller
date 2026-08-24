@@ -31,7 +31,8 @@
 //                label-syncjoin, label-syncleave, label-synccodeplaceholder,
 //                label-syncoff, label-syncconnecting, label-syncconnected,
 //                label-syncunknownroom, label-syncfailed, label-syncjoinconfirm,
-//                label-synccopylink, label-synccopied
+//                label-synccopylink, label-synccopied, label-syncname,
+//                label-synccolor
 //                (defaults are English)
 
 const DOCK_CSS = `
@@ -119,6 +120,7 @@ const LABEL_KEYS = [
   'sync', 'syncCreate', 'syncJoin', 'syncLeave', 'syncCodePlaceholder',
   'syncOff', 'syncConnecting', 'syncConnected', 'syncUnknownRoom',
   'syncFailed', 'syncJoinConfirm', 'syncCopyLink', 'syncCopied',
+  'syncName', 'syncColor',
 ];
 
 export class BattleToolbar extends HTMLElement {
