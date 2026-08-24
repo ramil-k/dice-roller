@@ -162,7 +162,8 @@ screen and returns to the page.
 The screen always fills the viewport and its rows never collapse. A hidden
 area just leaves its cell empty and transparent; with the map toggled off the
 page shows through its cell and stays fully clickable — a HUD mode with only
-the pool, the tracker and the toolbar overlaid.
+the tracker and the toolbar overlaid (the token pool hides together with the
+map: placing tokens is pointless without it).
 
 `<battle-toolbar>` above is the usual way in; the standalone `<battle-mat>`
 button opens the same screen on its map area:
@@ -242,7 +243,9 @@ token when it is placed and surface in the initiative tracker.
   tooltips); hold Shift to show every plate at once, or pin them with the
   tools-bar tag button (the touch-device path). Plates are one size for every
   token, sit left-aligned under it, and paint above all tokens so neighbors
-  never cover them. The tools bar also hosts the token-pool area toggle.
+  never cover them. The tools bar also hosts the token-pool area toggle
+  (effective only while the map is on — with the map off the pool is always
+  hidden).
 - **Export / Import** — download the map as a `.canvas` file or load one.
 - **Clear** — remove all content, keeping grid and viewport settings.
 
@@ -295,8 +298,9 @@ suggests using **Export**.
 
 Beside the encounter document the screen keeps one more `localStorage` key,
 `battle-mat-ui` — the area-visibility toggles (`{ "map": true, "pool": true,
-"tracker": true }`). It is a per-device UI preference and is not part of the
-exported `.canvas` file.
+"tracker": true }`; `pool` only takes effect while `map` is `true` — without
+the map the pool is always hidden). It is a per-device UI preference and is
+not part of the exported `.canvas` file.
 
 ### Built-in token icons
 

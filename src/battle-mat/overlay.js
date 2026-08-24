@@ -5,7 +5,8 @@
 // — a vertical toolbar column on the right (the same corner as the page
 // dock): the map tools group at its top and, bottom-aligned, dock-style
 // buttons that toggle the map, the token pool and the initiative tracker
-// areas (state persisted in the battle-mat-ui localStorage key), plus a dice
+// areas (state persisted in the battle-mat-ui localStorage key; the pool
+// only shows while the map is on), plus a dice
 // button that opens the roll-dice builder overlay on top of everything.
 // Escape closes the screen (no close button).
 // Mirrors the DiceOverlay architecture in roll-dice.js — a detached host
@@ -153,8 +154,10 @@ const OVERLAY_CSS = `
      inside fit-content, hence the percentage), with the list scrolling
      beyond the cap. Area visibility is toggled via data-show-* attributes;
      a hidden pool/tracker contributes no content, so its row collapses to
-     0. With the map off its 1fr cell stays, shows the page underneath, and
-     pointer events pass through to it — only the remaining areas stay
+     0. The pool additionally requires the map: placing tokens is pointless
+     without it, so with the map off the pool hides regardless of its own
+     toggle. With the map off its 1fr cell stays, shows the page underneath,
+     and pointer events pass through to it — only the remaining areas stay
      interactive (the :host is pointer-inert so it never swallows those
      clicks itself). */
   :host { pointer-events: none; }
@@ -172,8 +175,9 @@ const OVERLAY_CSS = `
       "tracker toolbar";
   }
   .mat-root:not([data-show-map]) { pointer-events: none; }
-  .mat-root:not([data-show-map]) :is(.screen-toolbar, .pool, .tracker-area, .token-card) { pointer-events: auto; }
+  .mat-root:not([data-show-map]) :is(.screen-toolbar, .tracker-area, .token-card) { pointer-events: auto; }
   .mat-root:not([data-show-map]) .map-area { display: none; }
+  .mat-root:not([data-show-map]) .pool { display: none; }
   .mat-root:not([data-show-pool]) .pool { display: none; }
   .mat-root:not([data-show-tracker]) .tracker-area { display: none; }
   @keyframes bm-fade { from { opacity: 0; } }
