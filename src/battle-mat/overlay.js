@@ -204,6 +204,11 @@ const OVERLAY_CSS = `
     height: 0;
     min-height: 100%;
   }
+  /* explicit row per child — the layout does not depend on source order */
+  .screen-toolbar > .tools { grid-row: 1; }
+  .screen-toolbar > .b-tracker { grid-row: 2; }
+  .screen-toolbar > .b-map { grid-row: 3; }
+  .screen-toolbar > .b-dice { grid-row: 4; }
   .screen-toolbar > button {
     display: inline-flex;
     align-items: center;
