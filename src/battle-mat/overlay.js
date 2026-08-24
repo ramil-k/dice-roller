@@ -190,10 +190,10 @@ const OVERLAY_CSS = `
   .screen-toolbar {
     grid-area: toolbar;
     display: grid;
-    grid-template-columns: 1fr min-content min-content min-content;
-    /* everything sits at the bottom of the full-height column, like the dock */
-    align-content: end;
-    align-items: end;
+    /* the 1fr tools row soaks up the free height, pushing the dock-style
+       buttons to the bottom of the column, like the page dock */
+    grid-template-rows: 1fr min-content min-content min-content;
+    justify-items: center;
     padding: 0;
     background: var(--bm-surface);
     border-left: 1px solid var(--bm-edge);
@@ -346,6 +346,8 @@ const OVERLAY_CSS = `
     align-items: center;
     gap: 0.1rem;
     padding: 0;
+    /* fill the toolbar's 1fr row so the tool buttons stay top-aligned */
+    align-self: stretch;
   }
   .mat-root:not([data-show-map]) .tools { display: none; }
   .tools button {
