@@ -163,6 +163,7 @@ export class BattleToolbar extends HTMLElement {
       }
       const hasLink = window.location.hash.startsWith('#bm-room=');
       if (!hasConfig && !hasLink) return;
+      console.log(`[bm toolbar] syncBoot on ${location.pathname}: config=${hasConfig} link=${hasLink}`);
       import('./battle-mat/sync.js')
         .then(async (m) => {
           const key = this.getAttribute('storage-key') ?? undefined;

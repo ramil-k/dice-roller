@@ -29,6 +29,7 @@ import { DEFAULT_KEY, getStore } from './store.js';
 import { EXT } from './canvas-doc.js';
 import { AWARENESS_EVENT, PRESENCE_EVENT } from './presence.js';
 import { getAdjectives } from './adjectives.js';
+import { dlog, caller, docSummary, vpOf } from './debug.js';
 
 export const SYNC_KEY = 'battle-mat-sync';
 export const DEFAULT_SERVER = 'https://universal.ramilkarimov.me:9443';
@@ -165,12 +166,19 @@ const flattenMeta = (doc) => {
   return flat;
 };
 
-const diffMap = (ymap, prevFlat, curFlat) => {
+// `ops` (optional) collects a human-readable trace of what was sent.
+const diffMap = (ymap, prevFlat, curFlat, ops, label = '') => {
   for (const [k, v] of Object.entries(curFlat)) {
-    if (!(k in prevFlat) || !same(prevFlat[k], v)) ymap.set(k, clone(v));
+    if (!(k in prevFlat) || !same(prevFlat[k], v)) {
+      ymap.set(k, clone(v));
+      ops?.push(`${label}set ${k}=${k === 'url' || k === 'ext.points' ? '…' : JSON.stringify(v)}`);
+    }
   }
   for (const k of Object.keys(prevFlat)) {
-    if (!(k in curFlat)) ymap.delete(k);
+    if (!(k in curFlat)) {
+      ymap.delete(k);
+      ops?.push(`${label}DELETE ${k}`);
+    }
   }
 };
 
@@ -178,7 +186,7 @@ const diffMap = (ymap, prevFlat, curFlat) => {
 // to the Y.Doc in one local-origin transaction. Assigns "ext.seq" to new
 // nodes (mutating them in the plain doc) so every replica can restore the
 // nodes-array order deterministically.
-export function pushDoc(ydoc, doc, prev) {
+export function pushDoc(ydoc, doc, prev, ops) {
   const yNodes = ydoc.getMap('nodes');
   const yMeta = ydoc.getMap('meta');
   ydoc.transact(() => {
@@ -199,15 +207,21 @@ export function pushDoc(ydoc, doc, prev) {
       if (!yn) {
         ((node[EXT] ??= {}).seq ??= ++maxSeq);
         yNodes.set(node.id, new Y.Map(Object.entries(flattenNode(node)).map(([k, v]) => [k, clone(v)])));
+        ops?.push(`add node ${node.id.slice(0, 8)} (${node[EXT]?.kind}${node[EXT]?.locked ? ', locked' : ''})`);
       } else if (before) {
-        diffMap(yn, flattenNode(before), flattenNode(node));
+        diffMap(yn, flattenNode(before), flattenNode(node), ops, `${node.id.slice(0, 8)}: `);
+      } else {
+        ops?.push(`node ${node.id.slice(0, 8)} exists remotely but not in snapshot - NOT diffed`);
       }
     }
     for (const id of prevNodes.keys()) {
-      if (!curIds.has(id) && yNodes.has(id)) yNodes.delete(id);
+      if (!curIds.has(id) && yNodes.has(id)) {
+        yNodes.delete(id);
+        ops?.push(`remove node ${id.slice(0, 8)}`);
+      }
     }
 
-    diffMap(yMeta, prev ? flattenMeta(prev) : {}, flattenMeta(doc));
+    diffMap(yMeta, prev ? flattenMeta(prev) : {}, flattenMeta(doc), ops, 'meta: ');
   }, LOCAL_ORIGIN);
 }
 
@@ -279,7 +293,14 @@ export function startSync(storageKey = DEFAULT_KEY, { server = DEFAULT_SERVER, r
   const pushNow = () => {
     clearTimeout(session.pushTimer);
     session.pushTimer = null;
-    pushDoc(ydoc, store.doc, session.snapshot);
+    const ops = [];
+    pushDoc(ydoc, store.doc, session.snapshot, ops);
+    dlog('sync', `push -> room ${room}: ${ops.length} op(s)`, {
+      ops,
+      doc: docSummary(store.doc),
+      snapshot: session.snapshot ? docSummary(session.snapshot) : '(none)',
+      from: caller(),
+    });
     session.snapshot = clone(store.doc);
   };
 
@@ -288,12 +309,22 @@ export function startSync(storageKey = DEFAULT_KEY, { server = DEFAULT_SERVER, r
     try {
       const local = store.doc[EXT]?.viewport;
       const next = materializeDoc(ydoc, { viewport: local });
+      dlog('sync', `applyRemote <- room ${room} (keeping local viewport ${vpOf(store.doc)})`, {
+        before: docSummary(store.doc),
+        after: docSummary(next),
+        yNodes: ydoc.getMap('nodes').size,
+        from: caller(),
+      });
       session.snapshot = clone(next);
       store.setDoc(next, { persist: true });
     } finally {
       session.applying = false;
     }
   };
+  dlog('sync', `startSync room=${room} server=${server} clientID=${ydoc.clientID}`, {
+    local: docSummary(store.doc),
+    from: caller(),
+  });
 
   // --- presence: cursors and tracker focus ride on Yjs awareness. The UI
   // publishes local state via PRESENCE_EVENT and renders peers from
@@ -328,13 +359,20 @@ export function startSync(storageKey = DEFAULT_KEY, { server = DEFAULT_SERVER, r
   window.addEventListener(PRESENCE_EVENT, session.onPresence);
 
   session.unsubscribe = store.subscribe((e) => {
+    if (e.type === 'change') {
+      dlog('sync', `store change full=${e.full} ready=${session.ready} applying=${session.applying}` +
+        ` -> ${!session.ready || session.applying ? 'ignored' : session.pushTimer === null ? 'push scheduled' : 'push already pending'}`);
+    }
     if (!session.ready || session.applying || e.type !== 'change') return;
     if (session.pushTimer === null) {
       session.pushTimer = setTimeout(pushNow, PUSH_DEBOUNCE);
     }
   });
 
-  ydoc.on('update', (_update, origin) => {
+  ydoc.on('update', (update, origin) => {
+    const originName = origin === LOCAL_ORIGIN ? 'local' : origin === null ? 'null' : origin === provider ? 'provider(remote)' : typeof origin;
+    dlog('sync', `ydoc update origin=${originName} bytes=${update.byteLength} ready=${session.ready}` +
+      `${!session.ready || origin === LOCAL_ORIGIN || origin === null ? ' -> ignored' : ' -> push pending local edits, then applyRemote'}`);
     if (!session.ready || origin === LOCAL_ORIGIN || origin === null) return;
     // fold not-yet-pushed local edits in first, then materialize the merge
     pushNow();
@@ -342,11 +380,18 @@ export function startSync(storageKey = DEFAULT_KEY, { server = DEFAULT_SERVER, r
   });
 
   provider.on('status', ({ status }) => {
+    dlog('sync', `provider status: ${status} (room ${room})`);
     session.status = status === 'connected' ? 'connected' : 'connecting';
     emitStatus(storageKey, session);
   });
+  provider.on('connection-close', (ev) => dlog('sync', `ws closed code=${ev?.code} reason=${ev?.reason}`));
+  provider.on('connection-error', (ev) => dlog('sync', 'ws error', ev));
 
   provider.once('sync', () => {
+    dlog('sync', `first sync with room ${room}: ${hasContent(ydoc) ? 'room has content - adopting it' : 'room empty - seeding from local'}`, {
+      yNodes: ydoc.getMap('nodes').size,
+      yMeta: ydoc.getMap('meta').toJSON(),
+    });
     if (hasContent(ydoc)) {
       applyRemote(); // the room is the source of truth
     } else {
@@ -363,6 +408,7 @@ export function startSync(storageKey = DEFAULT_KEY, { server = DEFAULT_SERVER, r
 
 export function stopSync(storageKey = DEFAULT_KEY, { forget = true } = {}) {
   const session = sessions.get(storageKey);
+  dlog('sync', `stopSync forget=${forget} hadSession=${Boolean(session)}`, { from: caller() });
   if (session) {
     clearTimeout(session.pushTimer);
     clearTimeout(session.cursorTimer);

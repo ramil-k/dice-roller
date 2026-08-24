@@ -15,6 +15,8 @@
 //
 // This module is DOM-free and covered by test/battle-mat-canvas-doc.test.js.
 
+import { dlog, caller } from './debug.js';
+
 export const EXT = 'x-battleMat';
 
 // Spec preset colors "1"-"6" (red, orange, yellow, green, cyan, purple). The
@@ -73,6 +75,12 @@ export function getExt(doc) {
   const ext = (doc[EXT] ??= {});
   ext.version ??= 1;
   fillDefaults((ext.grid ??= {}), DEFAULT_GRID);
+  if (!ext.viewport || ['x', 'y', 'zoom'].some((k) => ext.viewport[k] == null)) {
+    dlog('doc', 'getExt: viewport missing/partial - filling defaults (viewport RESET)', {
+      had: ext.viewport ? { ...ext.viewport } : null,
+      from: caller(),
+    });
+  }
   fillDefaults((ext.viewport ??= {}), DEFAULT_VIEWPORT);
   fillDefaults((ext.combat ??= {}), DEFAULT_COMBAT);
   return ext;
@@ -148,6 +156,7 @@ export function setLocked(doc, id, locked) {
   const node = getNode(doc, id);
   if (!node) return false;
   const ext = (node[EXT] ??= {});
+  dlog('doc', `setLocked ${id.slice(0, 8)} -> ${locked}`, { was: ext.locked === true, from: caller() });
   if (locked) ext.locked = true;
   else delete ext.locked;
   return true;

@@ -53,6 +53,7 @@ import { getAdjectives } from './adjectives.js';
 import { CATEGORIES, iconUrl } from './registry.js';
 import { buildScene, render, applyViewport, updateGrid, renderSelection, clearSelection } from './view.js';
 import { screenToWorld } from './viewport.js';
+import { dlog, caller, vpOf, docSummary } from './debug.js';
 import { AWARENESS_EVENT, publishPresence, safeColor, safeName } from './presence.js';
 import { attachTools } from './tools.js';
 import { buildTracker, LINK_ICON } from './tracker.js';
@@ -1024,6 +1025,7 @@ class BattleMatOverlay {
     lockBtn.addEventListener('click', () => {
       const n = current();
       if (!n) return;
+      dlog('overlay', `lock button: image ${n.id.slice(0, 8)} locked ${isLocked(n)} -> ${!isLocked(n)}`);
       setLocked(this.store.doc, n.id, !isLocked(n));
       this._commit(); // change event re-renders the map, the frame and this card
     });
@@ -1663,6 +1665,7 @@ class BattleMatOverlay {
       getGrid: () => getExt(this.store.doc).grid,
       getViewport: () => getExt(this.store.doc).viewport,
       setViewport: (vp) => {
+        dlog('overlay', `setViewport (pan/zoom) ${vpOf(this.store.doc)} -> x=${Math.round(vp.x)} y=${Math.round(vp.y)} zoom=${vp.zoom.toFixed(3)}`);
         getExt(this.store.doc).viewport = vp;
         applyViewport(this.refs, vp);
         this._rescaleCursors();
@@ -1740,6 +1743,10 @@ class BattleMatOverlay {
 
   _syncFromDoc() {
     const ext = getExt(this.store.doc);
+    dlog('overlay', `_syncFromDoc: applying viewport from doc ${vpOf(this.store.doc)}`, {
+      ...docSummary(this.store.doc),
+      from: caller(),
+    });
     updateGrid(this.refs, ext.grid);
     applyViewport(this.refs, ext.viewport);
     render(this.refs, this.store.doc);
@@ -1761,6 +1768,7 @@ class BattleMatOverlay {
     if (e.type === 'save-result') {
       this._reportSave(e.ok);
     } else if (e.full) {
+      dlog('overlay', 'store event full=true: doc replaced - re-reading grid/viewport/combat', docSummary(this.store.doc));
       this._syncFromDoc();
       this._rebuildPool();
       // the doc was replaced wholesale (import, another tab, a sync-room

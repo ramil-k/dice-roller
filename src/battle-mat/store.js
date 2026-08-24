@@ -25,6 +25,7 @@
 // test/battle-mat-store.test.js.
 
 import { validateCanvas, serialize, emptyDoc } from './canvas-doc.js';
+import { dlog, caller, docSummary, vpOf } from './debug.js';
 
 export const DEFAULT_KEY = 'battle-mat-canvas';
 
@@ -33,8 +34,10 @@ export function loadDoc(key = DEFAULT_KEY, storage = globalThis.localStorage) {
     const raw = storage.getItem(key);
     if (!raw) return null;
     const res = validateCanvas(JSON.parse(raw));
+    if (!res.ok) dlog('store', `loadDoc(${key}): stored doc rejected: ${res.error}`, { rawLength: raw.length });
     return res.ok ? res.doc : null;
-  } catch {
+  } catch (err) {
+    dlog('store', `loadDoc(${key}) threw`, err);
     return null;
   }
 }
@@ -62,6 +65,7 @@ export function createAutosaver(key, { delay = 500, storage = globalThis.localSt
     pending = null;
     timer = null;
     const ok = saveDoc(key, doc, storage);
+    dlog('store', `autosave write ${ok ? 'ok' : 'FAILED'}`, docSummary(doc));
     if (onResult) onResult(ok);
     return ok;
   };
@@ -112,11 +116,17 @@ export function getStore(key = DEFAULT_KEY, { storage = globalThis.localStorage,
     // Replace the whole document (import, clear). `persist: false` is for
     // externally-written state that is already in storage.
     setDoc(next, { persist = true } = {}) {
+      dlog('store', `setDoc persist=${persist} (doc replaced wholesale)`, {
+        before: docSummary(doc),
+        after: docSummary(next),
+        from: caller(),
+      });
       doc = next;
       if (persist) autosaver.schedule(doc);
       notify({ type: 'change', full: true });
     },
     commit() {
+      dlog('store', 'commit', { ...docSummary(doc), from: caller() });
       // Structural changes (add/remove token, turn, stat edits) are infrequent
       // and things watch localStorage for them — the <add-to-battle> badge and
       // other tabs — so write immediately instead of on the debounce. (Only
@@ -126,6 +136,7 @@ export function getStore(key = DEFAULT_KEY, { storage = globalThis.localStorage,
       notify({ type: 'change', full: false });
     },
     save() {
+      dlog('store', `save (viewport-only) ${vpOf(doc)}`, { from: caller(2) });
       autosaver.schedule(doc);
     },
     flush() {
@@ -143,6 +154,11 @@ export function getStore(key = DEFAULT_KEY, { storage = globalThis.localStorage,
     window.addEventListener('storage', (e) => {
       if (e.key !== key || e.newValue === null) return;
       const loaded = loadDoc(key, storage);
+      dlog('store', 'storage event: another tab/page wrote this key - adopting its doc (viewport included!)', {
+        current: docSummary(doc),
+        stored: loaded ? docSummary(loaded) : '(invalid)',
+        rawLength: e.newValue.length,
+      });
       if (loaded) store.setDoc(loaded, { persist: false });
     });
   }
