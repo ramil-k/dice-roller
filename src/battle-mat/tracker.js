@@ -4,6 +4,12 @@
 // through it, so the mat and the tracker stay in sync in both directions,
 // including across tabs.
 //
+// The list is a table built on CSS grid: the <ol> owns the column tracks and
+// every row is a subgrid, so cells align across rows without <table> markup.
+// On narrow (mobile) viewports each row rewraps into two lines — portrait and
+// name on the first, the stat fields on the second (plain flex wrap; nothing
+// needs cross-row column alignment there).
+//
 // Per row: portrait thumbnail (kind-colored dot when the token has no image),
 // name, editable HP (with /max hint), editable AC,
 // editable initiative, and — when the page has the <roll-dice> component
@@ -34,14 +40,18 @@ import {
 const PANEL_CSS = `
   .trk-head {
     display: flex;
+    flex-flow: row wrap;
     align-items: center;
     gap: 0.5rem;
     padding: 0.55rem 0.8rem;
     border-bottom: 1px solid color-mix(in srgb, var(--bm-trk-edge) 55%, transparent);
     font-weight: 700;
   }
+  /* every control keeps its natural width; the spacer soaks up the rest, so
+     on a narrow panel the buttons wrap below the title as a group */
+  .trk-head > * { flex: 0 0 max-content; }
+  .trk-head .spacer { flex: 1 1 0; }
   .trk-head .round {
-    margin-left: auto;
     color: var(--bm-trk-muted);
     font-weight: 600;
     font-variant-numeric: tabular-nums;
@@ -67,13 +77,30 @@ const PANEL_CSS = `
     list-style: none;
     overflow-y: auto;
     overscroll-behavior: contain;
+    /* a table without <table>: the list owns the column tracks — marker,
+       flexible name, HP, AC, initiative, remove — and each row subgrids
+       into them, so cells align down the list */
+    display: grid;
+    grid-template-columns: max-content minmax(6rem, 1fr) repeat(3, max-content) max-content;
+    column-gap: 0.45em;
+    align-content: start;
   }
   .trk-list li {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: subgrid;
+    align-items: center;
+    padding: 0.3rem 0.8rem;
+  }
+  .trk-list .name-wrap {
     display: flex;
     align-items: center;
     gap: 0.45em;
-    padding: 0.3rem 0.8rem;
+    min-width: 0;
   }
+  .trk-list .ac-wrap { display: inline-flex; }
+  /* mobile line break between the name and the stats — inert on the grid */
+  .trk-list .trk-break { display: none; }
   .trk-list li.active {
     background: color-mix(in srgb, var(--bm-trk-accent) 14%, transparent);
     box-shadow: inset 3px 0 0 var(--bm-trk-accent);
@@ -166,12 +193,28 @@ const PANEL_CSS = `
 
   .trk-list li.trk-clickable { cursor: pointer; }
   .trk-empty { padding: 0.9rem; color: var(--bm-trk-muted); }
+
+  /* narrow viewports: the table collapses — each row rewraps into two lines
+     (portrait + name, then the stat fields); fixed-width inputs line up
+     across rows on their own, so the subgrid machinery is not needed here */
+  @media (max-width: 600px) {
+    .trk-list { display: block; }
+    .trk-list li {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.3rem 0.45em;
+    }
+    .trk-list .name-wrap { flex: 1 1 auto; }
+    .trk-list .trk-break { display: block; flex-basis: 100%; height: 0; }
+    .trk-list .trk-remove { margin-left: auto; }
+  }
 `;
 
 const KIND_COLOR = { player: '#4a9e6f', monster: '#cf5a5a' };
 
-// external-link glyph for the row's creature-page anchor
-const LINK_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6M20 4l-9 9M11 6H5v13h13v-6"/></svg>`;
+// external-link glyph for the creature-page anchor (rows here, the token
+// card in overlay.js)
+export const LINK_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6M20 4l-9 9M11 6H5v13h13v-6"/></svg>`;
 
 export const DEFAULT_LABELS = {
   title: 'Initiative',
@@ -235,7 +278,7 @@ export function buildTracker(container, { storageKey = DEFAULT_KEY, labels = {},
     store.commit();
     setTimeout(render, 0);
   });
-  head.append(round, fillBtn, nextBtn, resetBtn);
+  head.append(el('span', 'spacer'), round, fillBtn, nextBtn, resetBtn);
 
   const list = el('ol', 'trk-list');
   list.setAttribute('aria-label', L.title);
@@ -371,9 +414,15 @@ export function buildTracker(container, { storageKey = DEFAULT_KEY, labels = {},
         render();
       });
 
-      row.append(marker, name);
-      if (link) row.appendChild(link);
-      row.append(hpWrap, input('ac', getAc(node), L.ac), initWrap, remove);
+      // name and the page link share one cell so the grid keeps a fixed
+      // column count whether or not the token carries a link
+      const nameWrap = el('span', 'name-wrap');
+      nameWrap.appendChild(name);
+      if (link) nameWrap.appendChild(link);
+      const acWrap = el('span', 'ac-wrap');
+      acWrap.appendChild(input('ac', getAc(node), L.ac));
+
+      row.append(marker, nameWrap, el('span', 'trk-break'), hpWrap, acWrap, initWrap, remove);
       list.appendChild(row);
     }
     if (focusedId !== null && focusedField !== null) {
