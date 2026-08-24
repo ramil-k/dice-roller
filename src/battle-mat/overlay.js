@@ -458,6 +458,7 @@ const OVERLAY_CSS = `
   .sync-panel h2 { margin: 0; font-size: 0.9rem; }
   .sync-panel .sync-status { color: var(--bm-muted); }
   .sync-panel .sync-status code { color: var(--bm-fg); user-select: all; }
+  .sync-panel .sync-status a.sync-room { color: var(--bm-fg); text-decoration: underline dotted; text-underline-offset: 0.2em; }
   .sync-panel .sync-error { color: #e0464c; }
   .sync-panel .sync-row { display: flex; gap: 0.4rem; }
   .sync-panel input {
@@ -1052,7 +1053,17 @@ class BattleMatOverlay {
       const word = status === 'connecting' ? L.syncConnecting : L.syncConnected;
       const code = document.createElement('code');
       code.textContent = room ?? '';
-      this._syncStatus.replaceChildren(`${word} `, code);
+      let roomEl = code;
+      if (room) {
+        // the room name doubles as the invite link (same #bm-room= format as
+        // ROOM_HASH_PREFIX in sync.js) - right-click/long-press to share it
+        const a = document.createElement('a');
+        a.className = 'sync-room';
+        a.href = `${location.origin}${location.pathname}${location.search}#bm-room=${room}`;
+        a.appendChild(code);
+        roomEl = a;
+      }
+      this._syncStatus.replaceChildren(`${word} `, roomEl);
     }
   }
 
