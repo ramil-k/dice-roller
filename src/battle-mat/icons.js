@@ -24,15 +24,20 @@ export const ICONS = {
   upload: wrap('<path d="M12 15V4M7.5 8L12 3.5 16.5 8M5 19.5h14"/>'),
   trash: wrap('<path d="M4.5 6.5h15M9.5 6V4.5h5V6M7 6.5l1 13h8l1-13M10.3 10v6M13.7 10v6"/>'),
   close: wrap('<path d="M6 6l12 12M18 6L6 18"/>'),
-  // two circular arrows for the room-sync button
-  sync: wrap('<path d="M20 8.5A8.2 8.2 0 0 0 5.6 6.2M4 15.5a8.2 8.2 0 0 0 14.4 2.3"/><path d="M20 3.5v5h-5M4 20.5v-5h5"/>'),
+
   // name-tag glyph for the token-name-plates toggle
   label: wrap('<path d="M4 11.5V5.5A1.5 1.5 0 0 1 5.5 4h6l8.5 8.5a1.5 1.5 0 0 1 0 2.1l-5.4 5.4a1.5 1.5 0 0 1-2.1 0z"/><circle cx="8.3" cy="8.3" r="1.3"/>'),
   // Screen-toolbar controls, matching the <battle-toolbar> dock glyphs:
   // Chikin's map (340-office/map), priority-seat for the token pool
-  // (110-sign/priority-seat) and speedometer for the initiative tracker
-  // (028-transport/other/speedometer2) — all checked in under public/365/ —
+  // (110-sign/priority-seat), speedometer for the initiative tracker
+  // (028-transport/other/speedometer2) and circumnavigation for the sync
+  // rooms (190-science/circumnavigation) — all checked in under public/365/ —
   // plus the roll-dice d20. Fill-based, hence no wrap().
+  sync: `
+  <svg class="icon" viewBox="23 70 112 68" fill="currentColor" aria-hidden="true">
+    <path fill-rule="evenodd" d="M133.81,93.09l-8,7.14-20.86.13L103.08,91l8,.12,1.16,2.65,2.31-.08-.09-5.51c-3.38-.51-6.67-.57-8.7.09a14,14,0,0,0-.17-12.49l8.69-.36-.06-3.69,4.11-.08,0,3.6,10.31-.42s1.23,11-2.93,17.06a23.18,23.18,0,0,0-7.28-2.9l0,4.57ZM75.32,123.65c-31.09,0-29.68-44.42-.49-44.42S103.72,123.65,75.32,123.65ZM90,103.18l-3.22-.94-2.63-5.77,1.2-2.73-3.8-3.16-5.14.59-5.93-3.4-6.24,2.57.87,9.69L72,102.37l-1,8.22,1.27,5.55,5.75-.45L84.83,106Zm-8,24.15c20.07-5.37,31.61-13.79,35.74-21.84l5.33,1.59c-4.84,9.77-17.66,19.63-39.49,25.48-60.94,16.33-77-21.17-36.95-42.86l.73,5.87C16.14,113.87,28.87,141.57,82,127.33Z"/>
+  </svg>
+`,
   map: `
   <svg class="icon" viewBox="24 59 104 92" fill="currentColor" aria-hidden="true">
     <path fill-rule="evenodd" d="M117.94,135.21l-28,11.53L65.35,128.29l-36.64,8.08L34.9,69.5l30.79-5.76L93.74,82.18l30.38-10.37Zm-5.19-43.94-1.86,8.9-5.44.8L101.38,109,97.83,104l-2.9-.18-1.17-.8-.27,3.78-3.26,1.43L87,103.63l-1.72,1,3.15,5.61,3.88,1.16-4.11,4.56L87,123.27l-7.94,1.9-3.53-5-1-9L68.35,108l-2.94-6.18.65-3.91,6-3.21L78.53,99l7-.75-.08-3.92L81,92l-.6,3.43L76.94,95l-1-4.09-4,.69-2.53-6,2.26-2.52,2.44,2.31,3.11.16,4.36-5.1L64.09,69.13l-5.68,1.13.78,1.21.8,5.28-1.12.65-7.39-5.77-2.63.52L48,78.92l3.95,3,.83-5.47,5.62,5L57.7,85.3l-4.65,3.19-.13,6.25-3.49-2.17L44.51,92l.31,3.12L49,96.57l-3.9,2.75-4.92-2.9-2.09-5.7-3.4,39.33,8.93-2.22,4.17-14.94-2.36-2.65-1.12-5.3,4.25-6.06,11.15,6.23-.49,2.15,5.6,4.31-3.94,5.53L59.4,119l-3.06,0-6.71,7.37,16.07-4,24.61,18.15,23.18-9.59,3.87-42Zm-6.79,36-2.75-1.91-5.83,4.57-1.55-6.31,5.72-8.76.81,2.11,2.32-.34.83-3.65,4.48,4.66-.24,6.6Z"/>
