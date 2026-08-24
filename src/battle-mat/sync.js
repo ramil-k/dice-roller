@@ -17,6 +17,11 @@
 // empty room seeds it from the local encounter; joining a room with content
 // adopts the room's state (the room is the source of truth on connect).
 // While connected, edits merge live in both directions.
+//
+// Invite links: any page that mounts <battle-toolbar> joins a room when its
+// URL carries "#bm-room=<code>" (the hash never reaches the static host and
+// works on forks/mirrors of the site). The sync panel offers a copy-link
+// button for the current room.
 
 import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
@@ -295,6 +300,61 @@ export async function joinRoom(room, storageKey = DEFAULT_KEY, server = DEFAULT_
   if (!(await roomExists(room, server))) throw new Error('unknown-room');
   saveSyncConfig({ server, room });
   startSync(storageKey, { server, room });
+}
+
+// --- invite links (#bm-room=<code>) ----------------------------------------
+
+export const ROOM_HASH_PREFIX = '#bm-room=';
+const ROOM_RE = /^[a-z]+-[a-z]+-\d{4}$/;
+const JOIN_CONFIRM = 'Joining a room replaces the current encounter with the room state. Continue?';
+
+// Pure parser for the invite-link hash (covered by tests).
+export function parseRoomHash(hash) {
+  if (typeof hash !== 'string' || !hash.startsWith(ROOM_HASH_PREFIX)) return null;
+  const room = decodeURIComponent(hash.slice(ROOM_HASH_PREFIX.length)).trim();
+  return ROOM_RE.test(room) ? room : null;
+}
+
+export function roomFromUrl() {
+  try {
+    return parseRoomHash(window.location.hash);
+  } catch {
+    return null;
+  }
+}
+
+// Invite link to `room` on the current page.
+export function inviteLink(room) {
+  const { origin, pathname, search } = window.location;
+  return `${origin}${pathname}${search}${ROOM_HASH_PREFIX}${room}`;
+}
+
+const stripRoomHash = () => {
+  try {
+    if (parseRoomHash(window.location.hash)) {
+      history.replaceState(null, '', window.location.pathname + window.location.search);
+    }
+  } catch {
+    /* history unavailable */
+  }
+};
+
+// Handle an invite link: join the room, asking first only when there is a
+// local encounter to lose. Following a link to the already-configured room
+// just resumes it. Returns 'joined' | 'already' | 'cancelled'.
+export async function joinFromLink(room, storageKey = DEFAULT_KEY, { confirmText = JOIN_CONFIRM } = {}) {
+  const cfg = loadSyncConfig();
+  if (cfg?.room === room) {
+    maybeStartSync(storageKey);
+    stripRoomHash();
+    return 'already';
+  }
+  const store = getStore(storageKey);
+  const hasLocal = (store.doc.nodes?.length ?? 0) > 0;
+  if (hasLocal && !window.confirm(confirmText)) return 'cancelled';
+  await joinRoom(room, storageKey, cfg?.server ?? DEFAULT_SERVER);
+  stripRoomHash();
+  return 'joined';
 }
 
 // Called by the battle-toolbar eager shell on page load: resume the

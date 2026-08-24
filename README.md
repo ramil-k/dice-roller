@@ -129,7 +129,7 @@ import '@ramilkos/roll-dice/battle-toolbar';
 | `storage-key` | `localStorage` key of the shared encounter                   | `battle-mat-canvas` |
 | `roster`      | JSON array of extra pool tokens; the property wins           | `[]`                |
 | `dice`        | die sizes the builder tray offers, e.g. `"6 20"`             | `4 6 8 10 12 20`    |
-| `label-*`     | localized UI strings for the dock, the battle screen toolbar and the tracker area: `label-map`, `label-pool`, `label-dice` plus the tracker's `label-title`, `label-round`, `label-next`, `label-fill`, `label-reset`, `label-resetconfirm`, `label-empty`, `label-name`, `label-hp`, `label-ac`, `label-init`, `label-remove`, `label-link`, and the sync panel's `label-sync`, `label-synccreate`, `label-syncjoin`, `label-syncleave`, `label-synccodeplaceholder`, `label-syncoff`, `label-syncconnecting`, `label-syncconnected`, `label-syncunknownroom`, `label-syncfailed`, `label-syncjoinconfirm` | English |
+| `label-*`     | localized UI strings for the dock, the battle screen toolbar and the tracker area: `label-map`, `label-pool`, `label-dice` plus the tracker's `label-title`, `label-round`, `label-next`, `label-fill`, `label-reset`, `label-resetconfirm`, `label-empty`, `label-name`, `label-hp`, `label-ac`, `label-init`, `label-remove`, `label-link`, and the sync panel's `label-sync`, `label-synccreate`, `label-syncjoin`, `label-syncleave`, `label-synccodeplaceholder`, `label-syncoff`, `label-syncconnecting`, `label-syncconnected`, `label-syncunknownroom`, `label-syncfailed`, `label-syncjoinconfirm`, `label-synccopylink`, `label-synccopied` | English |
 
 Unlike the other widgets the dock pins itself flush into the corner
 (`position: fixed; right: 0; bottom: 0`, only the top-left corner rounded);
@@ -268,6 +268,13 @@ code with the table. **Join** connects to an existing room - the room's state
 replaces the local encounter (the panel warns first). The code is the room's
 only secret; the session (`battle-mat-sync` in `localStorage`) survives
 reloads and reconnects on page load, battle screen open or not.
+
+**Invite links.** While connected, the panel's **Copy invite link** button
+copies the current page URL with `#bm-room=<code>` appended. Opening such a
+link on any page that mounts `<battle-toolbar>` joins the room: silently when
+the device has no local encounter, after a confirm when it would replace one
+(a link to the already-joined room just resumes it). The hash is handled
+client-side and stripped from the URL after joining.
 
 While connected, the encounter is a CRDT (Yjs): everyone's edits merge live
 at the granularity of a single field of a single token, so one player moving

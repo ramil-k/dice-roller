@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 import { EXT, emptyDoc, makeToken } from '../src/battle-mat/canvas-doc.js';
-import { hasContent, materializeDoc, pushDoc } from '../src/battle-mat/sync.js';
+import { hasContent, materializeDoc, parseRoomHash, pushDoc } from '../src/battle-mat/sync.js';
 
 const sampleDoc = () => {
   const doc = emptyDoc();
@@ -126,5 +126,19 @@ describe('battle-mat sync bridge', () => {
     expect(out[EXT].combat.round).toBe(4);
     expect(out[EXT].combat.activeNodeId).toBe('tok-b');
     expect(out[EXT].grid.cellSize).toBe(70);
+  });
+});
+
+describe('invite-link hash', () => {
+  it('parses valid room hashes', () => {
+    expect(parseRoomHash('#bm-room=brave-otter-4821')).toBe('brave-otter-4821');
+    expect(parseRoomHash('#bm-room=silent-basilisk-8900')).toBe('silent-basilisk-8900');
+    expect(parseRoomHash('#bm-room=%20brave-otter-4821%20')).toBe('brave-otter-4821');
+  });
+
+  it('rejects anything else', () => {
+    for (const bad of ['', '#', '#toc-anchor', '#bm-room=', '#bm-room=UPPER-case-1234', '#bm-room=a-b-12', '#bm-room=../etc', null, undefined]) {
+      expect(parseRoomHash(bad)).toBe(null);
+    }
   });
 });

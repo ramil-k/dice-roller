@@ -96,6 +96,8 @@ const SCREEN_LABELS = {
   syncUnknownRoom: 'No such room',
   syncFailed: 'Sync failed',
   syncJoinConfirm: 'Joining a room replaces the current encounter with the room state. Continue?',
+  syncCopyLink: 'Copy invite link',
+  syncCopied: 'Link copied',
 };
 
 const TOOLS = [
@@ -989,12 +991,17 @@ class BattleMatOverlay {
       this._syncRun((m) => m.createAndConnect(this.storageKey)),
     );
 
+    this._syncCopy = document.createElement('button');
+    this._syncCopy.type = 'button';
+    this._syncCopy.textContent = L.syncCopyLink;
+    this._syncCopy.addEventListener('click', () => this._syncCopyLink());
+
     this._syncLeave = document.createElement('button');
     this._syncLeave.type = 'button';
     this._syncLeave.textContent = L.syncLeave;
     this._syncLeave.addEventListener('click', () => this._syncRun((m) => m.stopSync(this.storageKey)));
 
-    panel.append(title, this._syncStatus, this._syncError, joinRow, createBtn, this._syncLeave);
+    panel.append(title, this._syncStatus, this._syncError, joinRow, createBtn, this._syncCopy, this._syncLeave);
     this._syncPanel = panel;
     this._renderSyncState({ room: null, status: 'off' });
     // a session may already be running (auto-started by the page shell)
@@ -1036,7 +1043,9 @@ class BattleMatOverlay {
   _renderSyncState({ room, status }) {
     const L = { ...SCREEN_LABELS, ...this.labels };
     this._syncBtn.setAttribute('data-state', status);
+    this._syncRoom = room ?? null;
     this._syncLeave.hidden = status === 'off';
+    this._syncCopy.hidden = status !== 'connected';
     if (status === 'off') {
       this._syncStatus.textContent = L.syncOff;
     } else {
@@ -1044,6 +1053,24 @@ class BattleMatOverlay {
       const code = document.createElement('code');
       code.textContent = room ?? '';
       this._syncStatus.replaceChildren(`${word} `, code);
+    }
+  }
+
+  async _syncCopyLink() {
+    if (!this._syncRoom) return;
+    const L = { ...SCREEN_LABELS, ...this.labels };
+    const m = await this._syncMod();
+    const link = m.inviteLink(this._syncRoom);
+    try {
+      await navigator.clipboard.writeText(link);
+      this._syncCopy.textContent = L.syncCopied;
+      setTimeout(() => {
+        this._syncCopy.textContent = L.syncCopyLink;
+      }, 1500);
+    } catch {
+      // clipboard unavailable (permissions, insecure context) - show the
+      // link for manual copying instead
+      window.prompt(L.syncCopyLink, link);
     }
   }
 

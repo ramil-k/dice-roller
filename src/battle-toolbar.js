@@ -30,7 +30,8 @@
 //                and the sync panel's label-sync, label-synccreate,
 //                label-syncjoin, label-syncleave, label-synccodeplaceholder,
 //                label-syncoff, label-syncconnecting, label-syncconnected,
-//                label-syncunknownroom, label-syncfailed, label-syncjoinconfirm
+//                label-syncunknownroom, label-syncfailed, label-syncjoinconfirm,
+//                label-synccopylink, label-synccopied
 //                (defaults are English)
 
 const DOCK_CSS = `
@@ -117,7 +118,7 @@ const LABEL_KEYS = [
   'name', 'hp', 'ac', 'init', 'remove', 'link',
   'sync', 'syncCreate', 'syncJoin', 'syncLeave', 'syncCodePlaceholder',
   'syncOff', 'syncConnecting', 'syncConnected', 'syncUnknownRoom',
-  'syncFailed', 'syncJoinConfirm',
+  'syncFailed', 'syncJoinConfirm', 'syncCopyLink', 'syncCopied',
 ];
 
 export class BattleToolbar extends HTMLElement {
@@ -146,18 +147,42 @@ export class BattleToolbar extends HTMLElement {
     button('b-mat', MAT_ICON, L.map ?? 'Battle map', (btn) => this._openScreen(btn, { show: 'map' }));
     button('b-dice', DIE_ICON, L.dice ?? 'Roll dice', (btn) => this._openDice(btn));
 
-    // Resume a configured battle-mat sync session without waiting for the
-    // battle screen to open. The cheap localStorage probe keeps the sync
-    // chunk (it bundles yjs) out of pages that never joined a room.
-    try {
-      if (localStorage.getItem('battle-mat-sync')) {
-        import('./battle-mat/sync.js')
-          .then((m) => m.maybeStartSync(this.getAttribute('storage-key') ?? undefined))
-          .catch((err) => console.error('battle-toolbar: failed to start sync', err));
+    // Battle-mat sync: an invite link (#bm-room=<code>) joins its room, and a
+    // session configured earlier resumes on load. Both probes are cheap, so
+    // pages that never touched sync never load the chunk (it bundles yjs).
+    const syncBoot = () => {
+      let hasConfig = false;
+      try {
+        hasConfig = localStorage.getItem('battle-mat-sync') !== null;
+      } catch {
+        /* storage unavailable */
       }
-    } catch {
-      /* storage unavailable */
-    }
+      const hasLink = window.location.hash.startsWith('#bm-room=');
+      if (!hasConfig && !hasLink) return;
+      import('./battle-mat/sync.js')
+        .then(async (m) => {
+          const key = this.getAttribute('storage-key') ?? undefined;
+          const room = m.roomFromUrl();
+          if (!room) {
+            m.maybeStartSync(key);
+            return;
+          }
+          const L = this._labels();
+          try {
+            await m.joinFromLink(room, key, { confirmText: L.syncJoinConfirm });
+          } catch (err) {
+            if (err?.message === 'unknown-room') {
+              window.alert(`${L.syncUnknownRoom ?? 'No such room'}: ${room}`);
+            } else {
+              console.error('battle-toolbar: failed to join the room link', err);
+            }
+          }
+        })
+        .catch((err) => console.error('battle-toolbar: failed to start sync', err));
+    };
+    syncBoot();
+    // room links may also arrive without a page load (SPA-style navigation)
+    window.addEventListener('hashchange', syncBoot);
   }
 
   // Pool roster for the battle screen: property wins over the JSON attribute;
