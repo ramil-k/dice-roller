@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- The battle screen survives page navigation within a tab: `<battle-toolbar>`
+  reopens it on the next page in the same shape (tracker HUD or map, per the
+  `battle-mat-ui` area toggles) without stealing focus. The open flag is the
+  per-tab `sessionStorage` key `battle-mat-screen` - other tabs are not
+  affected - and Escape clears it.
+
 - Fixed: a `localStorage` write from another tab (or another page of the
   site) replaced the whole encounter including the writer's pan/zoom, so
   the viewport jumped; in a sync room the adopted (possibly older) copy then

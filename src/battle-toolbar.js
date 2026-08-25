@@ -147,9 +147,28 @@ export class BattleToolbar extends HTMLElement {
     const L = this._labels();
     // Initiative opens the tracker as a HUD over the page (map hidden); the
     // map button brings the map area up.
-    button('b-tracker', TRACKER_ICON, L.title ?? 'Initiative tracker', (btn) => this._openScreen(btn, { show: 'tracker', hide: 'map' }));
-    button('b-mat', MAT_ICON, L.map ?? 'Battle map', (btn) => this._openScreen(btn, { show: 'map' }));
+    const trackerBtn = button('b-tracker', TRACKER_ICON, L.title ?? 'Initiative tracker', (btn) => this._openScreen(btn, { show: 'tracker', hide: 'map' }));
+    const matBtn = button('b-mat', MAT_ICON, L.map ?? 'Battle map', (btn) => this._openScreen(btn, { show: 'map' }));
     button('b-dice', DIE_ICON, L.dice ?? 'Roll dice', (btn) => this._openDice(btn));
+
+    // The screen survives page navigation within this tab: if it was open
+    // when the previous page was left (sessionStorage battle-mat-screen, set
+    // by the screen, cleared by Escape), bring it back in the same shape -
+    // the tracker HUD or the map, per the battle-mat-ui area toggles -
+    // without stealing focus. Skipped when both the map and the tracker are
+    // toggled off (nothing to show). Other tabs are unaffected:
+    // sessionStorage is per tab. The probe reads the keys inline so pages
+    // that never opened the screen do not load its chunk.
+    let restore = false;
+    try {
+      if (sessionStorage.getItem('battle-mat-screen') === '1') {
+        const ui = JSON.parse(localStorage.getItem('battle-mat-ui') ?? '{}');
+        restore = ui.map !== false || ui.tracker !== false;
+      }
+    } catch {
+      /* storage unavailable or corrupt */
+    }
+    if (restore) this._openScreen(this._prefersMap() ? matBtn : trackerBtn, { focus: false });
 
     // Battle-mat sync: an invite link (#bm-room=<code>) joins its room, and a
     // session configured earlier resumes on load. Both probes are cheap, so
@@ -232,7 +251,17 @@ export class BattleToolbar extends HTMLElement {
   // Both launchers load their implementation on first use; the button is
   // disabled while the chunk loads and re-enabled on failure so a transient
   // network error is retryable with another click.
-  async _openScreen(btn, { show, hide }) {
+  // Which dock button a restored screen "came in through" (Escape returns
+  // focus to it): the map button when the map area is on, else the tracker's.
+  _prefersMap() {
+    try {
+      return JSON.parse(localStorage.getItem('battle-mat-ui') ?? '{}').map !== false;
+    } catch {
+      return true;
+    }
+  }
+
+  async _openScreen(btn, { show, hide, focus = true } = {}) {
     if (this._loading) return;
     this._loading = true;
     btn.setAttribute('disabled', '');
@@ -245,6 +274,7 @@ export class BattleToolbar extends HTMLElement {
         labels: this._labels(),
         show,
         hide,
+        focus,
       });
     } catch (err) {
       console.error('battle-toolbar: failed to load the battle screen module', err);

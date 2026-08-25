@@ -159,6 +159,13 @@ choice persists per device in the `battle-mat-ui` `localStorage` key) and a
 d20 button that opens the dice roller on top of the screen. Escape closes the
 screen and returns to the page.
 
+The screen survives page navigation within a tab: leave a page with the
+tracker HUD or the map up and the next page that mounts `<battle-toolbar>`
+reopens it in the same shape (without stealing focus). The flag is
+`sessionStorage` `battle-mat-screen`, so other tabs are unaffected; Escape
+clears it. Nothing is restored when both the map and the tracker are toggled
+off.
+
 The screen always fills the viewport and its rows never collapse. A hidden
 area just leaves its cell empty and transparent; with the map toggled off the
 page shows through its cell and stays fully clickable — a HUD mode with only
@@ -355,7 +362,8 @@ Beside the encounter document the screen keeps one more `localStorage` key,
 `battle-mat-ui` — the area-visibility toggles (`{ "map": true, "pool": true,
 "tracker": true }`; `pool` only takes effect while `map` is `true` — without
 the map the pool is always hidden). It is a per-device UI preference and is
-not part of the exported `.canvas` file.
+not part of the exported `.canvas` file. Whether the screen is currently
+open is a per-tab flag in `sessionStorage` (`battle-mat-screen`).
 
 ### Built-in token icons
 

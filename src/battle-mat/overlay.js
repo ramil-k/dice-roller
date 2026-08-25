@@ -84,6 +84,22 @@ function saveUiState(ui) {
   }
 }
 
+// Whether the screen is open lives in sessionStorage: per tab, so a screen
+// left open in one tab does not pop up in the others, yet it survives a page
+// navigation inside the tab - <battle-toolbar> reopens it on the next page
+// (same areas, from battle-mat-ui), so the DM can move between wiki pages
+// with the tracker HUD or the map staying up. Escape closes it for good.
+export const SCREEN_OPEN_KEY = 'battle-mat-screen';
+
+function saveScreenOpen(open) {
+  try {
+    if (open) sessionStorage.setItem(SCREEN_OPEN_KEY, '1');
+    else sessionStorage.removeItem(SCREEN_OPEN_KEY);
+  } catch {
+    /* storage unavailable */
+  }
+}
+
 // English defaults for the screen toolbar; the tracker area has its own
 // defaults (DEFAULT_LABELS in tracker.js). Overridden via open()'s `labels`.
 const SCREEN_LABELS = {
@@ -651,13 +667,15 @@ class BattleMatOverlay {
   // SCREEN_LABELS and tracker.js DEFAULT_LABELS); `show` names an area
   // ('map' | 'pool' | 'tracker') that must be visible on open — the dock
   // button the user came in through — and `hide` one that must not be (the
-  // initiative button opens the tracker as a HUD without the map).
-  open({ opener, roster = [], storageKey = DEFAULT_KEY, labels = {}, show, hide } = {}) {
+  // initiative button opens the tracker as a HUD without the map). `focus:
+  // false` (restoring after a page navigation) leaves the page's focus alone.
+  open({ opener, roster = [], storageKey = DEFAULT_KEY, labels = {}, show, hide, focus = true } = {}) {
     this.opener = opener ?? null;
     this.roster = roster;
     this.storageKey = storageKey;
     this.labels = labels;
     this._ui = loadUiState();
+    saveScreenOpen(true);
     let uiChanged = false;
     if (show && AREAS.includes(show) && !this._ui[show]) {
       this._ui[show] = true;
@@ -687,10 +705,11 @@ class BattleMatOverlay {
     };
     window.addEventListener(AWARENESS_EVENT, this._onAwareness);
     this._syncFromDoc();
-    this._screenButtons.get(show && AREAS.includes(show) ? show : 'map').focus();
+    if (focus) this._screenButtons.get(show && AREAS.includes(show) ? show : 'map').focus();
   }
 
   close() {
+    saveScreenOpen(false);
     this._closeCard();
     this.tools?.detach();
     this._tracker?.dispose();
