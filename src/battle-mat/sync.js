@@ -18,6 +18,14 @@
 // adopts the room's state (the room is the source of truth on connect).
 // While connected, edits merge live in both directions.
 //
+// Images: an attached map image starts life as a data URI in the node's url
+// (so the mat works offline and without any server). In a room that is a
+// multi-megabyte value inside the CRDT - every peer downloads it on every
+// connect and every device has to fit it into localStorage - so once a
+// session is up, externalizeImages() uploads every data-URI image to the
+// room's image store on the sync server and swaps the url for the
+// short, immutable URL it returns; Yjs then garbage-collects the old value.
+//
 // Invite links: any page that mounts <battle-toolbar> joins a room when its
 // URL carries "#bm-room=<code>" (the hash never reaches the static host and
 // works on forks/mirrors of the site). The sync panel offers a copy-link
@@ -26,7 +34,7 @@
 import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
 import { DEFAULT_KEY, getStore } from './store.js';
-import { EXT } from './canvas-doc.js';
+import { EXT, getNode } from './canvas-doc.js';
 import { AWARENESS_EVENT, PRESENCE_EVENT } from './presence.js';
 import { getAdjectives } from './adjectives.js';
 import { dlog, caller, docSummary, vpOf } from './debug.js';
@@ -204,7 +212,9 @@ const diffMap = (ymap, prevFlat, curFlat, ops, label = '') => {
 // Diff `doc` against `prev` (the last synced snapshot) and apply the changes
 // to the Y.Doc in one local-origin transaction. Assigns "ext.seq" to new
 // nodes (mutating them in the plain doc) so every replica can restore the
-// nodes-array order deterministically.
+// nodes-array order deterministically. A node that is in the snapshot but no
+// longer in the Y.Doc was deleted by a peer, not added locally: it is left
+// alone (the following materialize drops it), never re-created.
 export function pushDoc(ydoc, doc, prev, ops) {
   const yNodes = ydoc.getMap('nodes');
   const yMeta = ydoc.getMap('meta');
@@ -223,7 +233,9 @@ export function pushDoc(ydoc, doc, prev, ops) {
       curIds.add(node.id);
       const before = prevNodes.get(node.id);
       const yn = yNodes.get(node.id);
-      if (!yn) {
+      if (!yn && before) {
+        ops?.push(`node ${node.id.slice(0, 8)} removed remotely - not re-added`);
+      } else if (!yn) {
         ((node[EXT] ??= {}).seq ??= ++maxSeq);
         yNodes.set(node.id, new Y.Map(Object.entries(flattenNode(node)).map(([k, v]) => [k, clone(v)])));
         ops?.push(`add node ${node.id.slice(0, 8)} (${node[EXT]?.kind}${node[EXT]?.locked ? ', locked' : ''})`);
@@ -270,6 +282,27 @@ export const hasContent = (ydoc) =>
   ydoc.getMap('nodes').size > 0 || ydoc.getMap('meta').size > 0;
 
 // ---------------------------------------------------------------------------
+// images by link (pure parts covered by tests)
+
+export const isDataImage = (url) => typeof url === 'string' && url.startsWith('data:image/');
+
+// Nodes whose picture still travels inline - candidates for upload.
+export const dataImageNodes = (doc) => (doc?.nodes ?? []).filter((n) => isDataImage(n.url));
+
+// Absolute URL of an uploaded image from the server's {path} answer.
+export const imageUrl = (server, path) => `${server.replace(/\/+$/, '')}${path}`;
+
+export async function uploadImage(blob, { server = DEFAULT_SERVER, room }) {
+  const res = await fetch(`${server}/rooms/${encodeURIComponent(room)}/images`, {
+    method: 'POST',
+    headers: { 'Content-Type': blob.type },
+    body: blob,
+  });
+  if (!res.ok) throw new Error(`image upload failed (${res.status})`);
+  return imageUrl(server, (await res.json()).path);
+}
+
+// ---------------------------------------------------------------------------
 // live session
 
 const sessions = new Map(); // storageKey -> session
@@ -299,6 +332,7 @@ export function startSync(storageKey = DEFAULT_KEY, { server = DEFAULT_SERVER, r
 
   const session = {
     room,
+    server,
     status: 'connecting',
     provider,
     ydoc,
@@ -306,6 +340,7 @@ export function startSync(storageKey = DEFAULT_KEY, { server = DEFAULT_SERVER, r
     applying: false,
     snapshot: null,
     pushTimer: null,
+    externalizing: null,
   };
   sessions.set(storageKey, session);
   store.synced = true; // the room, not other tabs' storage writes, drives this store
@@ -420,10 +455,49 @@ export function startSync(storageKey = DEFAULT_KEY, { server = DEFAULT_SERVER, r
     session.ready = true;
     session.status = 'connected';
     emitStatus(storageKey, session);
+    // inline images (the seed, or a room from before images-by-link) move to
+    // the server now that the session is up
+    externalizeImages(storageKey);
   });
 
   emitStatus(storageKey, session);
   return session;
+}
+
+// Upload every data-URI image of the store's doc to the session's room and
+// replace the urls (one commit at the end, so the swap syncs like any other
+// field edit). No session, nothing inline, or an upload already running -> a
+// no-op. Resolves to the number of images moved; a failed upload leaves that
+// node inline (it still works, just heavy) and is logged.
+export async function externalizeImages(storageKey = DEFAULT_KEY) {
+  const session = sessions.get(storageKey);
+  if (!session) return 0;
+  if (session.externalizing) return session.externalizing;
+  const store = getStore(storageKey);
+  const run = async () => {
+    let moved = 0;
+    for (const { id, url } of dataImageNodes(store.doc)) {
+      try {
+        const blob = await (await fetch(url)).blob();
+        const link = await uploadImage(blob, session);
+        // the doc may have been replaced meanwhile - re-find, and only swap
+        // if nobody changed the picture in between
+        const node = getNode(store.doc, id);
+        if (!node || node.url !== url || sessions.get(storageKey) !== session) continue;
+        node.url = link;
+        moved += 1;
+        dlog('sync', `image ${id.slice(0, 8)} uploaded (${Math.round(blob.size / 1024)} KB) -> ${link}`);
+      } catch (err) {
+        dlog('sync', `image ${id.slice(0, 8)} upload failed - kept inline`, err);
+      }
+    }
+    if (moved > 0) store.commit();
+    return moved;
+  };
+  session.externalizing = run().finally(() => {
+    session.externalizing = null;
+  });
+  return session.externalizing;
 }
 
 export function stopSync(storageKey = DEFAULT_KEY, { forget = true } = {}) {

@@ -1896,8 +1896,9 @@ class BattleMatOverlay {
   }
 
   // Read an image file, downscale to MAX_IMAGE_DIM if needed (data URIs live
-  // in localStorage, where a full-size photo would blow the quota), and add
-  // it centered on `at` (world coords) or the current viewport center.
+  // in localStorage, where a full-size photo would blow the quota; uploads
+  // to a sync room stay small too), and add it centered on `at` (world
+  // coords) or the current viewport center.
   _attachImageFile(file, at) {
     const reader = new FileReader();
     reader.onload = () => {
@@ -1923,6 +1924,13 @@ class BattleMatOverlay {
         }
         addNode(this.store.doc, makeImage({ x: center.x - width / 2, y: center.y - height / 2, width, height, url }));
         this._commit();
+        // in a sync room the picture moves to the server right away and the
+        // node's url becomes a link (see externalizeImages in sync.js)
+        if (this.store.synced) {
+          import('./sync.js')
+            .then((m) => m.externalizeImages(this.store.key))
+            .catch((err) => dlog('overlay', 'image upload skipped', err));
+        }
       };
       img.src = reader.result;
     };

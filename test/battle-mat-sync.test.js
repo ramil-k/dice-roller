@@ -3,7 +3,16 @@
 import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 import { EXT, emptyDoc, makeImage, makeToken } from '../src/battle-mat/canvas-doc.js';
-import { displayName, hasContent, materializeDoc, parseRoomHash, pushDoc } from '../src/battle-mat/sync.js';
+import {
+  dataImageNodes,
+  displayName,
+  hasContent,
+  imageUrl,
+  isDataImage,
+  materializeDoc,
+  parseRoomHash,
+  pushDoc,
+} from '../src/battle-mat/sync.js';
 
 const sampleDoc = () => {
   const doc = emptyDoc();
@@ -93,6 +102,38 @@ describe('battle-mat sync bridge', () => {
     expect(ids).not.toContain('tok-b');
   });
 
+  it('a peer that receives a deletion does not resurrect the node on its next push', () => {
+    const y1 = new Y.Doc();
+    const y2 = new Y.Doc();
+    const base = sampleDoc();
+    pushDoc(y1, base, null);
+    replicate(y1, y2);
+    const doc1 = materializeDoc(y1, {});
+    const doc2 = materializeDoc(y2, {}); // replica 2's synced snapshot
+
+    // replica 1 removes tok-b; the deletion reaches replica 2
+    const removed = structuredClone(doc1);
+    removed.nodes = removed.nodes.filter((n) => n.id !== 'tok-b');
+    pushDoc(y1, removed, doc1);
+    replicate(y1, y2);
+
+    // replica 2 pushes its (still old) plain doc before materializing the
+    // remote change - exactly what the live bridge does on every remote update.
+    // Its own pending edit to tok-a must go through; tok-b must stay gone.
+    const stale = structuredClone(doc2);
+    stale.nodes.find((n) => n.id === 'tok-a')[EXT].hp = 3;
+    const ops = [];
+    pushDoc(y2, stale, doc2, ops);
+    expect(ops.some((op) => op.startsWith('add node'))).toBe(false);
+
+    syncBoth(y1, y2);
+    for (const y of [y1, y2]) {
+      const out = materializeDoc(y, {});
+      expect(out.nodes.map((n) => n.id)).toEqual(['tok-a', 'img-map']);
+      expect(out.nodes[0][EXT].hp).toBe(3);
+    }
+  });
+
   it('keeps node order stable across replicas via ext.seq', () => {
     const y1 = new Y.Doc();
     const doc = sampleDoc();
@@ -163,6 +204,29 @@ describe('battle-mat sync bridge', () => {
     replicate(y1, y2);
     const img2 = materializeDoc(y2, {}).nodes.find((n) => n.id === 'img-map');
     expect('locked' in img2[EXT]).toBe(false);
+  });
+});
+
+describe('images by link', () => {
+  it('finds only the nodes whose picture is still inline', () => {
+    const doc = sampleDoc();
+    const inline = makeImage({ x: 0, y: 0, width: 10, height: 10, url: 'data:image/png;base64,AAAA' });
+    inline.id = 'img-inline';
+    const tokenInline = makeToken({ x: 0, y: 0, url: 'data:image/jpeg;base64,BBBB', name: 'Selfie' });
+    tokenInline.id = 'tok-inline';
+    doc.nodes.push(inline, tokenInline);
+    expect(dataImageNodes(doc).map((n) => n.id)).toEqual(['img-inline', 'tok-inline']);
+    expect(dataImageNodes({ nodes: [] })).toEqual([]);
+    expect(isDataImage('https://x/y.png')).toBe(false);
+    expect(isDataImage('data:text/plain,hi')).toBe(false);
+    expect(isDataImage(undefined)).toBe(false);
+  });
+
+  it('builds the image URL from the server base and the returned path', () => {
+    expect(imageUrl('https://sync.example:9443', '/rooms/brave-otter-4821/images/abc.png')).toBe(
+      'https://sync.example:9443/rooms/brave-otter-4821/images/abc.png',
+    );
+    expect(imageUrl('https://sync.example:9443/', '/rooms/r/images/a.jpg')).toBe('https://sync.example:9443/rooms/r/images/a.jpg');
   });
 });
 

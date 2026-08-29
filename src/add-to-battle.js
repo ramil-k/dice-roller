@@ -145,6 +145,18 @@ function countInEncounter(key, baseName, kind, storage = globalThis.localStorage
   }
 }
 
+// The avatar travels with the combatant into sync rooms, where peers may be
+// on another origin (a fork of the site) - so a site-relative `image` is
+// resolved against this page before it enters the encounter.
+const absoluteUrl = (url) => {
+  if (!url) return url;
+  try {
+    return new URL(url, document.baseURI).href;
+  } catch {
+    return url;
+  }
+};
+
 export class AddToBattle extends HTMLElement {
   // Override once per page to localize instance adjectives. Backed by the
   // shared adjectives module so the battle-mat overlay names duplicate tokens
@@ -240,7 +252,7 @@ export class AddToBattle extends HTMLElement {
         {
           name: attr('name'),
           kind: this.kind,
-          image: attr('image'),
+          image: absoluteUrl(attr('image')),
           size: attr('size'),
           hp: attr('hp'),
           ac: attr('ac'),

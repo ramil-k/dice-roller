@@ -303,6 +303,17 @@ cross-tab update keeps the tab's own viewport. The engine ships in a
 separate lazy chunk (~45 KB gzip) that loads only when a room is configured
 or the panel is used.
 
+**Images.** An attached map image starts as a data URI in the encounter (the
+mat works offline and without any server). In a room that would be a
+multi-megabyte value inside the CRDT, so once the session is connected
+every inline image is uploaded to the room's image store on the sync server
+and the node's `url` becomes a short immutable link
+(`<server>/rooms/<code>/images/<sha>.png`); the old value is
+garbage-collected out of the document. This applies to the seed of a new
+room, to rooms created before this feature and to pictures attached while
+connected. An export (`.canvas`) of such an encounter references those
+links, so it only opens elsewhere while the server keeps the room.
+
 **Presence.** Room members see each other live: a named, colored cursor on
 the battle map for every peer whose pointer is over their map, and a colored
 ring on the tracker input a peer is currently editing (with their name as the

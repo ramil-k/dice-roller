@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+- Fixed: in a sync room, a combatant (or any node) removed by one peer came
+  back a moment later. The bridge treated "node in my doc but not in the
+  Y.Doc" as a local addition, so every *other* connected client - a second
+  tab on the same device included - re-created the node it had just been
+  told to drop, and the resurrection propagated back to the deleter. A node
+  that is in the last synced snapshot but gone from the Y.Doc is now
+  recognized as a remote deletion and left to the next materialize.
+
+- Attached map images no longer travel inside the room document as data
+  URIs. Once a session is connected, every inline image (the seed of a new
+  room, an older room's content, a picture attached while in the room) is
+  uploaded to the room's image store on the sync server
+  (`POST /rooms/<code>/images`) and the node's `url` becomes a short,
+  immutable link - the multi-megabyte value leaves the CRDT and Yjs
+  garbage-collects it, so peers no longer download every picture on every
+  connect and `localStorage` stops filling up with them. Outside a room
+  nothing changes: images stay inline and the mat works offline. A failed
+  upload keeps the image inline.
+
+- `<add-to-battle>` resolves a site-relative `image` to an absolute URL
+  before the combatant enters the encounter, so peers of a sync room on a
+  different origin (a fork of the site) see the avatar.
+
 - The battle screen survives page navigation within a tab: `<battle-toolbar>`
   reopens it on the next page in the same shape (tracker HUD or map, per the
   `battle-mat-ui` area toggles) without stealing focus. The open flag is the
