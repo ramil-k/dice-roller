@@ -32,7 +32,8 @@
 //                label-syncoff, label-syncconnecting, label-syncconnected,
 //                label-syncunknownroom, label-syncfailed, label-syncjoinconfirm,
 //                label-synccopylink, label-synccopied, label-syncname,
-//                label-synccolor, and the image card's label-image,
+//                label-synccolor, label-syncplayer (the word shown for a
+//                nameless player), and the image card's label-image,
 //                label-lock, label-unlock, label-imageremove
 //                (defaults are English)
 
@@ -121,7 +122,7 @@ const LABEL_KEYS = [
   'sync', 'syncCreate', 'syncJoin', 'syncLeave', 'syncCodePlaceholder',
   'syncOff', 'syncConnecting', 'syncConnected', 'syncUnknownRoom',
   'syncFailed', 'syncJoinConfirm', 'syncCopyLink', 'syncCopied',
-  'syncName', 'syncColor',
+  'syncName', 'syncColor', 'syncPlayer',
   'image', 'lock', 'unlock', 'imageRemove',
 ];
 
@@ -186,12 +187,13 @@ export class BattleToolbar extends HTMLElement {
       import('./battle-mat/sync.js')
         .then(async (m) => {
           const key = this.getAttribute('storage-key') ?? undefined;
+          const L = this._labels();
+          m.setPlayerWord(L.syncPlayer);
           const room = m.roomFromUrl();
           if (!room) {
             m.maybeStartSync(key);
             return;
           }
-          const L = this._labels();
           try {
             await m.joinFromLink(room, key, { confirmText: L.syncJoinConfirm });
           } catch (err) {

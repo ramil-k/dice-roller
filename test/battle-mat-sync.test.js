@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 import { EXT, emptyDoc, makeImage, makeToken } from '../src/battle-mat/canvas-doc.js';
-import { hasContent, materializeDoc, parseRoomHash, pushDoc } from '../src/battle-mat/sync.js';
+import { displayName, hasContent, materializeDoc, parseRoomHash, pushDoc } from '../src/battle-mat/sync.js';
 
 const sampleDoc = () => {
   const doc = emptyDoc();
@@ -177,5 +177,24 @@ describe('invite-link hash', () => {
     for (const bad of ['', '#', '#toc-anchor', '#bm-room=', '#bm-room=UPPER-case-1234', '#bm-room=a-b-12', '#bm-room=../etc', null, undefined]) {
       expect(parseRoomHash(bad)).toBe(null);
     }
+  });
+});
+
+describe('player display name', () => {
+  const adjectives = ['Reckless', 'Sneaky'];
+
+  it('prefixes the name with the adjective picked by client id', () => {
+    expect(displayName('Ramil', 1, { adjectives })).toBe('Sneaky Ramil');
+  });
+
+  it('shows the generic word in place of a missing name', () => {
+    expect(displayName(null, 0, { adjectives, word: 'игрок' })).toBe('Reckless игрок');
+    expect(displayName('   ', 0, { adjectives, word: 'игрок' })).toBe('Reckless игрок');
+    expect(displayName(null, 0, { adjectives })).toBe('Reckless Player');
+  });
+
+  it('numbers nameless players when there are no adjectives', () => {
+    expect(displayName(null, 5, { word: 'игрок' })).toBe('игрок 15');
+    expect(displayName('Ramil', 5)).toBe('Ramil');
   });
 });

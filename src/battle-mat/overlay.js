@@ -122,6 +122,7 @@ const SCREEN_LABELS = {
   syncCopied: 'Link copied',
   syncName: 'Your name',
   syncColor: 'Your color',
+  syncPlayer: 'Player',
   image: 'Image',
   lock: 'Lock',
   unlock: 'Unlock',
@@ -1156,7 +1157,10 @@ class BattleMatOverlay {
   // use. The battle-toolbar shell auto-starts a configured session on page
   // load, so this panel is only the control surface.
   _syncMod() {
-    return (this._syncModule ??= import('./sync.js'));
+    return (this._syncModule ??= import('./sync.js').then((m) => {
+      m.setPlayerWord({ ...SCREEN_LABELS, ...this.labels }.syncPlayer);
+      return m;
+    }));
   }
 
   _buildSyncPanel() {

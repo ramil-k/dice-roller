@@ -45,7 +45,8 @@ const CURSOR_THROTTLE = 40; // ms between cursor awareness broadcasts
 // instance adjective (the same localizable list that names duplicate
 // combatants), chosen by client id - so two people who are both "Рамиль"
 // still read differently at the table, and a player with no name at all is
-// just "Свирепый".
+// "Свирепый игрок" - the generic word comes from the toolbar's
+// label-syncplayer (setPlayerWord), "Player" by default.
 export const USER_COLORS = ['#e0464c', '#f4a83a', '#f4c430', '#5fb98d', '#58b7d8', '#7d97e8', '#b078d8', '#d86fa8'];
 export const PROFILE_KEY = 'battle-mat-profile';
 
@@ -83,6 +84,27 @@ export function setProfile(patch, storage = globalThis.localStorage) {
   return next;
 }
 
+const DEFAULT_PLAYER_WORD = 'Player';
+let playerWord = DEFAULT_PLAYER_WORD;
+
+// The word shown in place of a missing name ("Свирепый игрок"); the toolbar
+// and the screen both push their label-syncplayer here. Empty resets.
+export function setPlayerWord(word) {
+  playerWord = typeof word === 'string' && word.trim() !== '' ? word.trim() : DEFAULT_PLAYER_WORD;
+  for (const session of sessions.values()) {
+    session.provider.awareness.setLocalStateField('user', localUser(session.ydoc.clientID));
+  }
+}
+
+// Pure: the display name for a player. A nameless player is "<adjective>
+// <word>"; with no adjective list either, "<word> NN" keeps peers apart.
+export function displayName(name, clientId, { adjectives = [], word = DEFAULT_PLAYER_WORD } = {}) {
+  const adjective = adjectives.length > 0 ? adjectives[clientId % adjectives.length] : null;
+  const who = typeof name === 'string' && name.trim() !== '' ? name.trim() : null;
+  if (adjective === null && who === null) return `${word} ${(clientId % 90) + 10}`;
+  return [adjective, who ?? word].filter(Boolean).join(' ').slice(0, 32);
+}
+
 function localUser(clientId) {
   const prof = loadProfile();
   let name = typeof prof.name === 'string' && prof.name.trim() !== '' ? prof.name.trim() : null;
@@ -98,10 +120,7 @@ function localUser(clientId) {
     typeof prof.color === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(prof.color)
       ? prof.color
       : USER_COLORS[clientId % USER_COLORS.length];
-  const adjectives = getAdjectives();
-  const adjective = adjectives.length > 0 ? adjectives[clientId % adjectives.length] : null;
-  const display = [adjective, name].filter(Boolean).join(' ') || `Player ${(clientId % 90) + 10}`;
-  return { name: display.slice(0, 32), color };
+  return { name: displayName(name, clientId, { adjectives: getAdjectives(), word: playerWord }), color };
 }
 
 // ---------------------------------------------------------------------------
