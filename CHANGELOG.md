@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- The sync button now opens a full-surface **sync screen** over the battle
+  screen instead of a small popover. It shows the current room (invite
+  link, copy, disconnect) with the list of players in it (from awareness,
+  live), the name/color profile, the join field and create button, and
+  **every room on the server** with its live connection count, the names of
+  the players in it and the time it was last used - refreshed on open, by
+  the Refresh button and every 20 s while the screen is up. Clicking a room
+  code joins it (after the usual confirm). The room list makes the codes
+  visible to anyone who opens the site: that is a deliberate trade-off for
+  a private table server. Escape (or the close button) leaves the screen.
+  New localizable strings: `label-syncclose`, `label-syncroomsection`,
+  `label-syncplayers`, `label-syncnobody`, `label-syncyou`,
+  `label-syncprofilesection`, `label-syncjoinsection`, `label-syncrooms`,
+  `label-syncrefresh`, `label-syncupdated`, `label-syncconnections`,
+  `label-synccurrent`, `label-syncnorooms`, `label-syncroomsfailed`.
+
 - Fixed: in a sync room, a combatant (or any node) removed by one peer came
   back a moment later. The bridge treated "node in my doc but not in the
   Y.Doc" as a local addition, so every *other* connected client - a second

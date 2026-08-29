@@ -534,6 +534,33 @@ export async function roomExists(room, server = DEFAULT_SERVER) {
   return res.ok;
 }
 
+// Every room on the server with its live connection count and player names
+// (the sync screen's room list). By design the codes are public here.
+export async function listRooms(server = DEFAULT_SERVER) {
+  const res = await fetch(`${server}/rooms`);
+  if (!res.ok) throw new Error(`room list failed (${res.status})`);
+  return (await res.json()).rooms ?? [];
+}
+
+// The server the store's session talks to (or would - the saved config,
+// then the default).
+export function syncServer(storageKey = DEFAULT_KEY) {
+  return sessions.get(storageKey)?.server ?? loadSyncConfig()?.server ?? DEFAULT_SERVER;
+}
+
+// Who is in the current room right now, this client first:
+// [{ clientId, name, color, self }]. Empty without a session.
+export function roomMembers(storageKey = DEFAULT_KEY) {
+  const s = sessions.get(storageKey);
+  if (!s) return [];
+  const out = [];
+  s.provider.awareness.getStates().forEach((state, clientId) => {
+    if (!state?.user) return;
+    out.push({ clientId, name: state.user.name, color: state.user.color, self: clientId === s.ydoc.clientID });
+  });
+  return out.sort((a, b) => Number(b.self) - Number(a.self) || String(a.name).localeCompare(String(b.name)));
+}
+
 // Create a room seeded from the current encounter, remember it, connect.
 export async function createAndConnect(storageKey = DEFAULT_KEY, server = DEFAULT_SERVER) {
   const room = await createRoom(server);

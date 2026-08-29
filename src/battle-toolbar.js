@@ -33,7 +33,13 @@
 //                label-syncunknownroom, label-syncfailed, label-syncjoinconfirm,
 //                label-synccopylink, label-synccopied, label-syncname,
 //                label-synccolor, label-syncplayer (the word shown for a
-//                nameless player), and the image card's label-image,
+//                nameless player), the sync screen's label-syncclose,
+//                label-syncroomsection, label-syncplayers, label-syncnobody,
+//                label-syncyou, label-syncprofilesection,
+//                label-syncjoinsection, label-syncrooms, label-syncrefresh,
+//                label-syncupdated, label-syncconnections, label-synccurrent,
+//                label-syncnorooms, label-syncroomsfailed, and the image
+//                card's label-image,
 //                label-lock, label-unlock, label-imageremove
 //                (defaults are English)
 
@@ -122,7 +128,10 @@ const LABEL_KEYS = [
   'sync', 'syncCreate', 'syncJoin', 'syncLeave', 'syncCodePlaceholder',
   'syncOff', 'syncConnecting', 'syncConnected', 'syncUnknownRoom',
   'syncFailed', 'syncJoinConfirm', 'syncCopyLink', 'syncCopied',
-  'syncName', 'syncColor', 'syncPlayer',
+  'syncName', 'syncColor', 'syncPlayer', 'syncClose', 'syncRoomSection',
+  'syncPlayers', 'syncNobody', 'syncYou', 'syncProfileSection',
+  'syncJoinSection', 'syncRooms', 'syncRefresh', 'syncUpdated',
+  'syncConnections', 'syncCurrent', 'syncNoRooms', 'syncRoomsFailed',
   'image', 'lock', 'unlock', 'imageRemove',
 ];
 

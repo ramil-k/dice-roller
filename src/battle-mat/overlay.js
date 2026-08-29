@@ -59,6 +59,7 @@ import { attachTools } from './tools.js';
 import { buildTracker, LINK_ICON } from './tracker.js';
 
 const MAX_IMAGE_DIM = 2048; // attached images are downscaled to fit (quota)
+const SYNC_ROOMS_POLL = 20000; // ms between room-list refreshes while the sync screen is open
 
 // Which screen areas are visible — a per-device UI preference, so it lives in
 // its own localStorage key rather than in the shared encounter document.
@@ -123,6 +124,20 @@ const SCREEN_LABELS = {
   syncName: 'Your name',
   syncColor: 'Your color',
   syncPlayer: 'Player',
+  syncClose: 'Close',
+  syncRoomSection: 'Room',
+  syncPlayers: 'In the room',
+  syncNobody: 'Nobody connected',
+  syncYou: 'you',
+  syncProfileSection: 'You',
+  syncJoinSection: 'Join or create',
+  syncRooms: 'Rooms on the server',
+  syncRefresh: 'Refresh',
+  syncUpdated: 'Updated',
+  syncConnections: 'connections',
+  syncCurrent: 'current',
+  syncNoRooms: 'No rooms yet',
+  syncRoomsFailed: 'Could not load the room list',
   image: 'Image',
   lock: 'Lock',
   unlock: 'Unlock',
@@ -217,7 +232,7 @@ const OVERLAY_CSS = `
       "tracker toolbar";
   }
   .mat-root:not([data-show-map]) { pointer-events: none; }
-  .mat-root:not([data-show-map]) :is(.screen-toolbar, .tracker-area, .token-card, .sync-panel) { pointer-events: auto; }
+  .mat-root:not([data-show-map]) :is(.screen-toolbar, .tracker-area, .token-card, .sync-screen) { pointer-events: auto; }
   .mat-root:not([data-show-map]) .map-area { display: none; }
   /* nothing left to control — hide the toolbar too (Escape still closes,
      and the dock buttons underneath stay clickable to bring areas back) */
@@ -479,29 +494,56 @@ const OVERLAY_CSS = `
   }
   .settings input[type="checkbox"] { width: 1rem; height: 1rem; accent-color: var(--bm-accent); }
 
-  /* --- sync panel (room create/join, opened from the sync button) ----------- */
-  .sync-panel[hidden] { display: none; }
-  .sync-panel {
+  /* --- sync screen (opened from the sync button) -----------------------------
+     A full-surface page over the battle screen: the current room and its
+     players, this player's identity, join/create, and the list of every
+     room on the server with live connection counts (polled while open).
+     Two columns when there is room, one on narrow viewports. */
+  .sync-screen[hidden] { display: none; }
+  .sync-screen {
     position: absolute;
-    right: 3.6rem;
-    bottom: 0.75rem;
+    inset: 0;
+    z-index: 5;
+    overflow-y: auto;
+    background: var(--bm-bg);
+    font-size: 0.9rem;
+    animation: bm-fade 0.15s ease;
+  }
+  .sync-screen .sync-inner {
+    max-width: 64rem;
+    margin: 0 auto;
+    padding: 1.25rem 1.5rem 2rem;
     display: grid;
-    gap: 0.55rem;
-    width: 15.5rem;
+    gap: 1.25rem;
+  }
+  .sync-screen .sync-head { display: flex; align-items: center; gap: 0.75rem; }
+  .sync-screen .sync-head h2 { margin: 0; font-size: 1.25rem; flex: 1; }
+  .sync-screen .sync-cols {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 1.25rem;
+    align-items: start;
+  }
+  @media (max-width: 720px) { .sync-screen .sync-cols { grid-template-columns: minmax(0, 1fr); } }
+  .sync-screen .sync-col { display: grid; gap: 1.25rem; }
+  .sync-screen section {
+    display: grid;
+    gap: 0.6rem;
+    align-content: start;
     background: var(--bm-surface);
     border: 1px solid var(--bm-edge);
     border-radius: 0.8rem;
-    box-shadow: 0 8px 24px rgb(0 0 0 / 0.35);
     padding: 0.9rem 1rem;
-    font-size: 0.85rem;
   }
-  .sync-panel h2 { margin: 0; font-size: 0.9rem; }
-  .sync-panel .sync-status { color: var(--bm-muted); }
-  .sync-panel .sync-status code { color: var(--bm-fg); user-select: all; }
-  .sync-panel .sync-status a.sync-room { color: var(--bm-fg); text-decoration: underline dotted; text-underline-offset: 0.2em; }
-  .sync-panel .sync-error { color: #e0464c; }
-  .sync-panel .sync-row { display: flex; gap: 0.4rem; }
-  .sync-panel input {
+  .sync-screen h3 { margin: 0; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--bm-muted); }
+  .sync-screen h3.sync-sub { margin-top: 0.5rem; }
+  .sync-screen .sync-status { color: var(--bm-muted); }
+  .sync-screen .sync-status code { color: var(--bm-fg); user-select: all; }
+  .sync-screen .sync-status a.sync-room { color: var(--bm-fg); text-decoration: underline dotted; text-underline-offset: 0.2em; }
+  .sync-screen .sync-error { color: #e0464c; }
+  .sync-screen .sync-row { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+  .sync-screen .sync-row .sync-updated { align-self: center; color: var(--bm-muted); font-size: 0.8rem; }
+  .sync-screen input {
     flex: 1;
     min-width: 0;
     font: inherit;
@@ -509,9 +551,9 @@ const OVERLAY_CSS = `
     background: rgb(from var(--bm-fg) r g b / 0.07);
     border: 1px solid var(--bm-edge);
     border-radius: 0.4rem;
-    padding: 0.25rem 0.4rem;
+    padding: 0.3rem 0.5rem;
   }
-  .sync-panel button {
+  .sync-screen button {
     font: inherit;
     color: var(--bm-fg);
     background: rgb(from var(--bm-fg) r g b / 0.07);
@@ -520,17 +562,47 @@ const OVERLAY_CSS = `
     padding: 0.3rem 0.6rem;
     cursor: pointer;
   }
-  .sync-panel button:hover { background: rgb(from var(--bm-fg) r g b / 0.14); }
-  .sync-panel .profile-swatches { display: flex; flex-wrap: wrap; gap: 0.4rem; }
-  .sync-panel .profile-swatches button {
-    width: 1.15rem;
-    height: 1.15rem;
+  .sync-screen button:hover { background: rgb(from var(--bm-fg) r g b / 0.14); }
+  .sync-screen button:focus-visible { outline: 2px solid var(--bm-accent); outline-offset: 2px; }
+  .sync-screen button:disabled { cursor: default; opacity: 0.6; }
+  .sync-screen .sync-close {
+    width: 2.2rem;
+    height: 2.2rem;
+    padding: 0;
+    font-size: 1.4rem;
+    line-height: 1;
+    border-radius: 50%;
+  }
+  .sync-screen .profile-swatches { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+  .sync-screen .profile-swatches button {
+    width: 1.3rem;
+    height: 1.3rem;
     padding: 0;
     border: 2px solid transparent;
     border-radius: 50%;
   }
-  .sync-panel .profile-swatches button[aria-pressed="true"] { border-color: var(--bm-fg); }
-  .sync-panel [hidden] { display: none; }
+  .sync-screen .profile-swatches button[aria-pressed="true"] { border-color: var(--bm-fg); }
+  .sync-screen ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.35rem; }
+  .sync-screen .sync-members li { display: flex; align-items: center; gap: 0.5rem; }
+  .sync-screen .sync-dot { flex: 0 0 auto; width: 0.7em; height: 0.7em; border-radius: 50%; }
+  .sync-screen .sync-self { color: var(--bm-muted); font-size: 0.8rem; }
+  .sync-screen .sync-rooms li {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0.15rem 0.75rem;
+    align-items: center;
+    padding: 0.45rem 0.6rem;
+    border: 1px solid var(--bm-edge);
+    border-radius: 0.5rem;
+  }
+  .sync-screen .sync-rooms li.is-current { border-color: var(--bm-accent); }
+  .sync-screen .sync-rooms .sync-code { font-family: ui-monospace, monospace; }
+  .sync-screen .sync-rooms .sync-count { font-weight: 700; font-variant-numeric: tabular-nums; }
+  .sync-screen .sync-rooms .sync-count.is-live { color: var(--bm-accent); }
+  .sync-screen .sync-rooms .sync-meta { grid-column: 1 / -1; color: var(--bm-muted); font-size: 0.8rem; display: flex; flex-wrap: wrap; gap: 0.25rem 0.6rem; }
+  .sync-screen .sync-rooms .sync-meta .sync-who { display: inline-flex; align-items: center; gap: 0.3rem; }
+  .sync-screen .sync-empty { color: var(--bm-muted); }
+  .sync-screen [hidden] { display: none; }
 
   /* --- remote cursors (sync rooms) ------------------------------------------ */
   .layer-cursors { pointer-events: none; }
@@ -710,6 +782,8 @@ class BattleMatOverlay {
   }
 
   close() {
+    clearInterval(this._syncRoomsTimer);
+    this._syncRoomsTimer = null;
     saveScreenOpen(false);
     this._closeCard();
     this.tools?.detach();
@@ -1165,11 +1239,23 @@ class BattleMatOverlay {
 
   _buildSyncPanel() {
     const L = { ...SCREEN_LABELS, ...this.labels };
-    const panel = el('div', 'sync-panel');
+    const panel = el('div', 'sync-screen');
     panel.hidden = true;
+    panel.setAttribute('role', 'dialog');
+    panel.setAttribute('aria-label', L.sync);
 
     const title = document.createElement('h2');
     title.textContent = L.sync;
+    const closeBtn = el('button', 'sync-close', '\u00d7');
+    closeBtn.type = 'button';
+    closeBtn.setAttribute('aria-label', L.syncClose);
+    closeBtn.title = L.syncClose;
+    closeBtn.addEventListener('click', () => {
+      this._toggleSyncPanel(false);
+      this._syncBtn.focus();
+    });
+    const head = el('div', 'sync-head');
+    head.append(title, closeBtn);
 
     this._syncStatus = el('div', 'sync-status');
     this._syncError = el('div', 'sync-error');
@@ -1210,7 +1296,7 @@ class BattleMatOverlay {
     createBtn.type = 'button';
     createBtn.textContent = L.syncCreate;
     createBtn.addEventListener('click', () =>
-      this._syncRun((m) => m.createAndConnect(this.storageKey)),
+      this._syncRun((m) => m.createAndConnect(this.storageKey, m.syncServer(this.storageKey))),
     );
 
     this._syncCopy = document.createElement('button');
@@ -1223,18 +1309,55 @@ class BattleMatOverlay {
     this._syncLeave.textContent = L.syncLeave;
     this._syncLeave.addEventListener('click', () => this._syncRun((m) => m.stopSync(this.storageKey)));
 
-    panel.append(
-      title,
+    // players in the current room (awareness), this client first
+    this._syncMembers = el('ul', 'sync-members');
+    this._syncMembers.setAttribute('aria-label', L.syncPlayers);
+    this._syncNobody = el('div', 'sync-empty', L.syncNobody);
+
+    const roomActions = el('div', 'sync-row');
+    roomActions.append(this._syncCopy, this._syncLeave);
+    const roomSec = document.createElement('section');
+    roomSec.append(
+      el('h3', null, L.syncRoomSection),
       this._syncStatus,
       this._syncError,
-      this._syncNameInput,
-      this._syncSwatches,
-      joinRow,
-      createBtn,
-      this._syncCopy,
-      this._syncLeave,
+      roomActions,
+      el('h3', 'sync-sub', L.syncPlayers),
+      this._syncMembers,
+      this._syncNobody,
     );
+
+    const profileSec = document.createElement('section');
+    profileSec.append(el('h3', null, L.syncProfileSection), this._syncNameInput, this._syncSwatches);
+
+    const joinSec = document.createElement('section');
+    joinSec.append(el('h3', null, L.syncJoinSection), joinRow, createBtn);
+
+    // every room on the server: live connection counts and player names,
+    // refreshed on open, on demand and on a slow poll while the screen is up
+    const refreshBtn = document.createElement('button');
+    refreshBtn.type = 'button';
+    refreshBtn.textContent = L.syncRefresh;
+    refreshBtn.addEventListener('click', () => this._loadRooms());
+    this._syncUpdated = el('span', 'sync-updated');
+    const roomsHead = el('div', 'sync-row');
+    roomsHead.append(refreshBtn, this._syncUpdated);
+    this._syncRooms = el('ul', 'sync-rooms');
+    this._syncRooms.setAttribute('aria-label', L.syncRooms);
+    this._syncRoomsEmpty = el('div', 'sync-empty');
+    this._syncRoomsEmpty.hidden = true;
+    const roomsSec = document.createElement('section');
+    roomsSec.append(el('h3', null, L.syncRooms), roomsHead, this._syncRooms, this._syncRoomsEmpty);
+
+    const left = el('div', 'sync-col');
+    left.append(roomSec, profileSec, joinSec);
+    const cols = el('div', 'sync-cols');
+    cols.append(left, roomsSec);
+    const inner = el('div', 'sync-inner');
+    inner.append(head, cols);
+    panel.appendChild(inner);
     this._syncPanel = panel;
+    this._syncRoomsData = [];
     this._renderSyncState({ room: null, status: 'off' });
     // a session may already be running (auto-started by the page shell)
     try {
@@ -1250,10 +1373,83 @@ class BattleMatOverlay {
   _toggleSyncPanel(force) {
     const show = force ?? this._syncPanel.hidden;
     this._syncPanel.hidden = !show;
+    clearInterval(this._syncRoomsTimer);
+    this._syncRoomsTimer = null;
     if (show) {
       this._fillSyncProfile();
+      this._renderMembers();
+      this._loadRooms();
+      this._syncRoomsTimer = setInterval(() => this._loadRooms(), SYNC_ROOMS_POLL);
       this._syncInput.focus();
     }
+  }
+
+  // The current room's players, from the session's awareness states (self
+  // included). Re-run on every awareness change while the screen is open.
+  async _renderMembers() {
+    if (this._syncPanel.hidden) return;
+    const L = { ...SCREEN_LABELS, ...this.labels };
+    const members = this._syncLive ? (await this._syncMod()).roomMembers(this.storageKey) : [];
+    this._syncMembers.replaceChildren();
+    for (const mbr of members) {
+      const li = el('li');
+      const dot = el('span', 'sync-dot');
+      dot.style.background = safeColor(mbr.color);
+      li.append(dot, el('span', null, safeName(mbr.name)));
+      if (mbr.self) li.appendChild(el('span', 'sync-self', `(${L.syncYou})`));
+      this._syncMembers.appendChild(li);
+    }
+    this._syncNobody.hidden = members.length > 0;
+  }
+
+  async _loadRooms() {
+    if (this._syncPanel.hidden) return;
+    const L = { ...SCREEN_LABELS, ...this.labels };
+    try {
+      const m = await this._syncMod();
+      this._syncRoomsData = await m.listRooms(m.syncServer(this.storageKey));
+      this._syncUpdated.textContent = `${L.syncUpdated} ${new Date().toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
+      this._renderRooms();
+    } catch {
+      this._syncRoomsEmpty.textContent = L.syncRoomsFailed;
+      this._syncRoomsEmpty.hidden = false;
+    }
+  }
+
+  _renderRooms() {
+    const L = { ...SCREEN_LABELS, ...this.labels };
+    const rooms = this._syncRoomsData;
+    this._syncRooms.replaceChildren();
+    for (const r of rooms) {
+      const current = r.code === this._syncRoom;
+      const li = el('li');
+      li.classList.toggle('is-current', current);
+      // the code is the join button (confirm first, like the join field);
+      // the current room's row is inert
+      const code = el('button', 'sync-code', r.code);
+      code.type = 'button';
+      code.disabled = current;
+      if (!current) code.addEventListener('click', () => this._syncJoinCode(r.code));
+      const count = el('span', 'sync-count', `${L.syncConnections}: ${r.connections ?? 0}`);
+      count.classList.toggle('is-live', (r.connections ?? 0) > 0);
+      if (current) count.append(` \u00b7 ${L.syncCurrent}`);
+      const meta = el('div', 'sync-meta');
+      for (const p of r.players ?? []) {
+        const who = el('span', 'sync-who');
+        const dot = el('span', 'sync-dot');
+        dot.style.background = safeColor(p.color);
+        who.append(dot, safeName(p.name));
+        meta.appendChild(who);
+      }
+      const when = r.lastActiveAt ? new Date(r.lastActiveAt) : null;
+      if (when && !Number.isNaN(when.getTime())) {
+        meta.appendChild(el('span', null, when.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })));
+      }
+      li.append(code, count, meta);
+      this._syncRooms.appendChild(li);
+    }
+    this._syncRoomsEmpty.textContent = L.syncNoRooms;
+    this._syncRoomsEmpty.hidden = rooms.length > 0;
   }
 
   // Prefill the name field and build/refresh the color swatches from the
@@ -1286,11 +1482,14 @@ class BattleMatOverlay {
   }
 
   _syncJoin() {
-    const code = this._syncInput.value.trim();
+    this._syncJoinCode(this._syncInput.value.trim());
+  }
+
+  _syncJoinCode(code) {
     if (!code) return;
     const L = { ...SCREEN_LABELS, ...this.labels };
     if (!window.confirm(L.syncJoinConfirm)) return;
-    this._syncRun((m) => m.joinRoom(code, this.storageKey));
+    this._syncRun((m) => m.joinRoom(code, this.storageKey, m.syncServer(this.storageKey)));
   }
 
   async _syncRun(action) {
@@ -1329,6 +1528,10 @@ class BattleMatOverlay {
       }
       this._syncStatus.replaceChildren(`${word} `, roomEl);
     }
+    if (!this._syncPanel.hidden) {
+      this._renderMembers();
+      this._renderRooms();
+    }
   }
 
   async _syncCopyLink() {
@@ -1353,6 +1556,7 @@ class BattleMatOverlay {
   // rerun wholesale: a room holds a handful of players, not a crowd.
   _renderCursors(states) {
     this._awarenessStates = states;
+    this._renderMembers();
     const zoom = getExt(this.store.doc).viewport.zoom || 1;
     const seen = new Set();
     for (const st of states) {

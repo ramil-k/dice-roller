@@ -277,13 +277,22 @@ just the dice.
 
 ### Sync rooms (play together)
 
-The sync button above the dock toggles opens the room panel. **Create a room
-from this encounter** asks the sync server for a room code (like
+The sync button above the dock toggles opens the **sync screen** - a full
+page over the battle screen (Escape or the close button leaves it). **Create
+a room from this encounter** asks the sync server for a room code (like
 `brave-otter-4821`) and seeds the room with the current encounter; share the
 code with the table. **Join** connects to an existing room - the room's state
-replaces the local encounter (the panel warns first). The code is the room's
-only secret; the session (`battle-mat-sync` in `localStorage`) survives
-reloads and reconnects on page load, battle screen open or not.
+replaces the local encounter (the screen warns first). The session
+(`battle-mat-sync` in `localStorage`) survives reloads and reconnects on
+page load, battle screen open or not.
+
+The screen also lists the **players in the current room** (live, from
+awareness - this client first) and **every room on the server**: connection
+count, who is in it, when it was last used; refreshed on open, on demand
+and every 20 s while the screen is open. A room code in that list is a
+join button. Note the trade-off: the room list makes every code visible to
+anyone who opens the site, so a code is no longer a secret - the server is
+meant for one private table.
 
 **Invite links.** While connected, the panel's **Copy invite link** button
 copies the current page URL with `#bm-room=<code>` appended. Opening such a
