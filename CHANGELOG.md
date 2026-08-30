@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+- Fixed: the `<add-to-battle>` instance badge did not go down when a
+  combatant was removed by a sync-room peer or another tab - it re-read
+  `localStorage` on the change event, before the store's debounced write
+  landed (or after a quota-failed one). The `battle-mat-change` event now
+  carries the live document and the badge counts from that.
+
+- Lazy by default: a sync room no longer connects on every page load. The
+  sync chunk (yjs, ~200 KB) loads only when a feature needs the room - the
+  battle screen opening, an `<add-to-battle>` click (which now awaits the
+  room's first sync before writing, so the new combatant lands in the room
+  instead of being overwritten by it), or an invite link. `<battle-toolbar>`
+  gained `BattleToolbar.adjectives` - the same setter as
+  `AddToBattle.adjectives`, available without loading add-to-battle - so a
+  page can localize instance adjectives from the one script it loads
+  eagerly. The initiative tracker fetches `roll-dice.js` itself when the
+  page did not, so the roll chips appear on any page.
+
 - The sync button now opens a full-surface **sync screen** over the battle
   screen instead of a small popover. It shows the current room (invite
   link, copy, disconnect) with the list of players in it (from awareness,

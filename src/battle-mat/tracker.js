@@ -242,6 +242,12 @@ export function buildTracker(container, { storageKey = DEFAULT_KEY, labels = {},
   const L = { ...DEFAULT_LABELS, ...labels };
   const store = getStore(storageKey);
   const root = container.getRootNode();
+  // the initiative roll chips are <roll-dice> elements; pages that had no
+  // dice on them never loaded that module, so fetch it now (the chips stay
+  // hidden until it lands - or for good if it fails)
+  if (typeof customElements !== 'undefined' && !customElements.get('roll-dice')) {
+    import('../roll-dice.js').catch(() => {});
+  }
   if (!root.querySelector('style[data-trk]')) {
     const style = document.createElement('style');
     style.dataset.trk = '';

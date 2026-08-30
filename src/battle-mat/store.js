@@ -97,9 +97,11 @@ export function getStore(key = DEFAULT_KEY, { storage = globalThis.localStorage,
   const notify = (event) => {
     for (const fn of [...subscribers]) fn(event);
     // a DOM-level echo of document changes for lightweight listeners (the
-    // <add-to-battle> instance badge) that don't hold a store subscription
+    // <add-to-battle> instance badge) that don't hold a store subscription.
+    // The live doc rides along: storage may lag (debounced setDoc writes) or
+    // have failed (quota), so listeners count from this, not from storage
     if (event.type === 'change' && typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('battle-mat-change', { detail: { key } }));
+      window.dispatchEvent(new CustomEvent('battle-mat-change', { detail: { key, doc } }));
     }
   };
   const autosaver = createAutosaver(key, {

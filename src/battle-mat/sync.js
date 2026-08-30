@@ -342,6 +342,11 @@ export function startSync(storageKey = DEFAULT_KEY, { server = DEFAULT_SERVER, r
     pushTimer: null,
     externalizing: null,
   };
+  // resolves once the first sync with the server finished (or the session
+  // was stopped before that) - ensureSync() waits on it
+  session.whenReady = new Promise((resolve) => {
+    session.markReady = resolve;
+  });
   sessions.set(storageKey, session);
   store.synced = true; // the room, not other tabs' storage writes, drives this store
 
@@ -455,6 +460,7 @@ export function startSync(storageKey = DEFAULT_KEY, { server = DEFAULT_SERVER, r
     session.ready = true;
     session.status = 'connected';
     emitStatus(storageKey, session);
+    session.markReady(true);
     // inline images (the seed, or a room from before images-by-link) move to
     // the server now that the session is up
     externalizeImages(storageKey);
@@ -508,6 +514,7 @@ export function stopSync(storageKey = DEFAULT_KEY, { forget = true } = {}) {
     clearTimeout(session.cursorTimer);
     if (session.onPresence) window.removeEventListener(PRESENCE_EVENT, session.onPresence);
     session.unsubscribe?.();
+    session.markReady?.(false);
     getStore(storageKey).synced = false;
     session.provider.destroy();
     session.ydoc.destroy();
@@ -631,10 +638,34 @@ export async function joinFromLink(room, storageKey = DEFAULT_KEY, { confirmText
   return 'joined';
 }
 
-// Called by the battle-toolbar eager shell on page load: resume the
-// configured session, if any.
+// Resume the configured session, if any and not already running. Called
+// when a feature needs the room: the battle screen opening, an
+// <add-to-battle> click. (Sessions are not started on plain page loads -
+// the chunk bundles yjs, and a page nobody edits on needs no connection.)
 export function maybeStartSync(storageKey = DEFAULT_KEY) {
   const cfg = loadSyncConfig();
   if (!cfg || sessions.has(storageKey)) return;
   startSync(storageKey, { server: cfg.server ?? DEFAULT_SERVER, room: cfg.room });
+}
+
+// Make sure the configured room (if any) is live before an edit: starts the
+// session and waits for its first sync, so the room state has replaced the
+// local doc and the edit lands in the room instead of being overwritten by
+// it. Resolves true when the room is ready, false when there is no room
+// configured, the session stopped, or the server did not answer within
+// `timeout` (the caller then proceeds locally, as it would offline).
+export async function ensureSync(storageKey = DEFAULT_KEY, { timeout = 5000 } = {}) {
+  maybeStartSync(storageKey);
+  const session = sessions.get(storageKey);
+  if (!session) return false;
+  if (session.ready) return true;
+  let timer;
+  const gaveUp = new Promise((resolve) => {
+    timer = setTimeout(() => resolve(false), timeout);
+  });
+  try {
+    return await Promise.race([session.whenReady, gaveUp]);
+  } finally {
+    clearTimeout(timer);
+  }
 }

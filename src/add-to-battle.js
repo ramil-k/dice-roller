@@ -128,18 +128,22 @@ const SWORD_ICON = `
   </svg>
 `;
 
-// Count combatants of a type directly from the stored encounter document,
+// Count combatants of a type in an encounter document (plain JSON Canvas),
 // without loading the store/document chunk (the badge must stay lightweight).
+export function countInDoc(doc, baseName, kind) {
+  if (!doc || !Array.isArray(doc.nodes)) return 0;
+  return doc.nodes.filter((n) => {
+    const ext = n?.[EXT];
+    if (!ext || ext.kind !== 'token') return false;
+    const base = ext.baseName ?? ext.name;
+    return base === baseName && (ext.tokenKind ?? 'player') === kind;
+  }).length;
+}
+
+// ...and from the stored copy (page load, other tabs' writes).
 function countInEncounter(key, baseName, kind, storage = globalThis.localStorage) {
   try {
-    const doc = JSON.parse(storage.getItem(key));
-    if (!doc || !Array.isArray(doc.nodes)) return 0;
-    return doc.nodes.filter((n) => {
-      const ext = n?.[EXT];
-      if (!ext || ext.kind !== 'token') return false;
-      const base = ext.baseName ?? ext.name;
-      return base === baseName && (ext.tokenKind ?? 'player') === kind;
-    }).length;
+    return countInDoc(JSON.parse(storage.getItem(key)), baseName, kind);
   } catch {
     return 0;
   }
@@ -211,7 +215,13 @@ export class AddToBattle extends HTMLElement {
 
       this._refresh = (e) => {
         if (e?.type === 'storage' && e.key !== this.storageKey) return;
-        if (e?.type === 'battle-mat-change' && e.detail?.key !== this.storageKey) return;
+        if (e?.type === 'battle-mat-change') {
+          if (e.detail?.key !== this.storageKey) return;
+          // count from the live doc the store sends along: its storage
+          // write may still be pending (debounced) or have failed (quota)
+          this._renderCount(e.detail.doc);
+          return;
+        }
         this._renderCount();
       };
     }
@@ -225,8 +235,9 @@ export class AddToBattle extends HTMLElement {
     window.removeEventListener('battle-mat-change', this._refresh);
   }
 
-  _renderCount() {
-    const n = countInEncounter(this.storageKey, this.getAttribute('name') ?? '', this.kind);
+  _renderCount(doc) {
+    const name = this.getAttribute('name') ?? '';
+    const n = doc ? countInDoc(doc, name, this.kind) : countInEncounter(this.storageKey, name, this.kind);
     if (n > 0) {
       this.dataset.count = n;
       this._badge.textContent = `×${n}`;
@@ -246,6 +257,20 @@ export class AddToBattle extends HTMLElement {
         import('./battle-mat/canvas-doc.js'),
       ]);
       const attr = (a) => this.getAttribute(a) ?? undefined;
+      // A configured sync room must be live *before* the edit: joining
+      // replaces the local encounter with the room state, so a combatant
+      // added first would be overwritten. The probe reads the key inline so
+      // pages without a room never load the sync chunk (it bundles yjs).
+      let hasRoom = false;
+      try {
+        hasRoom = localStorage.getItem('battle-mat-sync') !== null;
+      } catch {
+        /* storage unavailable */
+      }
+      if (hasRoom) {
+        const sync = await import('./battle-mat/sync.js');
+        await sync.ensureSync(this.storageKey); // false = proceed locally
+      }
       const store = getStore(this.storageKey);
       addCombatant(
         store.doc,

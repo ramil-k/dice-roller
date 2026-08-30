@@ -301,6 +301,14 @@ the device has no local encounter, after a confirm when it would replace one
 (a link to the already-joined room just resumes it). The hash is handled
 client-side and stripped from the URL after joining.
 
+**When the session runs.** A configured room does not connect on every
+page load - the engine bundles yjs (~200 KB) and a page nobody edits on
+needs no connection. The session starts when the battle screen opens (and
+stays up for that page), when an `<add-to-battle>` button is clicked (the
+button waits for the room's first sync before adding, so the combatant
+lands in the room rather than being overwritten by it - a few hundred ms),
+or when the page URL carries an invite link.
+
 While connected, the encounter is a CRDT (Yjs): everyone's edits merge live
 at the granularity of a single field of a single token, so one player moving
 their token while another edits a different token's hp never conflicts.

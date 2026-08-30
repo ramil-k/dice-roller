@@ -5,9 +5,12 @@
 // opens it with the map area up; the dice button opens the roll-dice builder
 // overlay directly.
 //
-// This module is the *eager* half and deliberately imports nothing from the
-// rest of the package: the battle screen and the dice overlay both load via
-// dynamic import() on first use, so pages pay nothing until a click.
+// This module is the *eager* half and deliberately imports (almost) nothing
+// from the rest of the package: the battle screen and the dice overlay both
+// load via dynamic import() on first use, so pages pay nothing until a
+// click. The one static import is the tiny adjectives module, so a page can
+// localize instance adjectives once (BattleToolbar.adjectives = [...]) before
+// any of the lazy halves - add-to-battle, the screen, sync - exist.
 //
 // The dock pins itself (position: fixed); pages adjust the spot and theme via
 // custom properties on the host:
@@ -135,7 +138,20 @@ const LABEL_KEYS = [
   'image', 'lock', 'unlock', 'imageRemove',
 ];
 
+import { getAdjectives, setAdjectives } from './battle-mat/adjectives.js';
+
 export class BattleToolbar extends HTMLElement {
+  // Localize instance adjectives ("Reckless Wolf") once per page. Backed by
+  // the shared adjectives module, so <add-to-battle>, the battle screen and
+  // sync-room player names all use the same list (AddToBattle.adjectives is
+  // the same setter; this one is available without loading add-to-battle).
+  static get adjectives() {
+    return getAdjectives();
+  }
+  static set adjectives(list) {
+    setAdjectives(list);
+  }
+
   connectedCallback() {
     if (this.shadowRoot) return;
     this._root = this.attachShadow({ mode: 'open' });
@@ -180,29 +196,21 @@ export class BattleToolbar extends HTMLElement {
     }
     if (restore) this._openScreen(this._prefersMap() ? matBtn : trackerBtn, { focus: false });
 
-    // Battle-mat sync: an invite link (#bm-room=<code>) joins its room, and a
-    // session configured earlier resumes on load. Both probes are cheap, so
-    // pages that never touched sync never load the chunk (it bundles yjs).
+    // Battle-mat sync: an invite link (#bm-room=<code>) joins its room right
+    // away. A session configured earlier is NOT resumed here - the sync chunk
+    // bundles yjs (~200 KB), so it loads only when a feature needs the room:
+    // the battle screen opening (overlay.js) or an <add-to-battle> click
+    // (add-to-battle.js awaits the room before writing). The hash probe is
+    // free, so pages without a link never load the chunk.
     const syncBoot = () => {
-      let hasConfig = false;
-      try {
-        hasConfig = localStorage.getItem('battle-mat-sync') !== null;
-      } catch {
-        /* storage unavailable */
-      }
-      const hasLink = window.location.hash.startsWith('#bm-room=');
-      if (!hasConfig && !hasLink) return;
-      console.log(`[bm toolbar] syncBoot on ${location.pathname}: config=${hasConfig} link=${hasLink}`);
+      if (!window.location.hash.startsWith('#bm-room=')) return;
       import('./battle-mat/sync.js')
         .then(async (m) => {
           const key = this.getAttribute('storage-key') ?? undefined;
           const L = this._labels();
           m.setPlayerWord(L.syncPlayer);
           const room = m.roomFromUrl();
-          if (!room) {
-            m.maybeStartSync(key);
-            return;
-          }
+          if (!room) return;
           try {
             await m.joinFromLink(room, key, { confirmText: L.syncJoinConfirm });
           } catch (err) {

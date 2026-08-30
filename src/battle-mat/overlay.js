@@ -1359,10 +1359,15 @@ class BattleMatOverlay {
     this._syncPanel = panel;
     this._syncRoomsData = [];
     this._renderSyncState({ room: null, status: 'off' });
-    // a session may already be running (auto-started by the page shell)
+    // The screen is where a configured room comes alive: nothing starts the
+    // session on a plain page load (the chunk bundles yjs), so resume it
+    // here - or just render a session another feature already started.
     try {
       if (localStorage.getItem('battle-mat-sync')) {
-        this._syncMod().then((m) => this._renderSyncState(m.syncState(this.storageKey)));
+        this._syncMod().then((m) => {
+          m.maybeStartSync(this.storageKey);
+          this._renderSyncState(m.syncState(this.storageKey));
+        });
       }
     } catch {
       /* storage unavailable */
