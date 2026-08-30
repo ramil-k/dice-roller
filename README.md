@@ -301,6 +301,13 @@ the device has no local encounter, after a confirm when it would replace one
 (a link to the already-joined room just resumes it). The hash is handled
 client-side and stripped from the URL after joining.
 
+**Versions.** The engine announces its version to the server (awareness
+`v`); a stale tab running a bundle older than the server's minimum is
+refused - its edits are not applied and it is closed with code 4001, on
+which the client stops reconnecting and the sync screen asks for a reload
+(`label-syncoutdated`). That protects a room from a tab that was left open
+across a deploy.
+
 **When the session runs.** A configured room does not connect on every
 page load - the engine bundles yjs (~200 KB) and a page nobody edits on
 needs no connection. The session starts when the battle screen opens (and

@@ -41,7 +41,8 @@
 //                label-syncyou, label-syncprofilesection,
 //                label-syncjoinsection, label-syncrooms, label-syncrefresh,
 //                label-syncupdated, label-syncconnections, label-synccurrent,
-//                label-syncnorooms, label-syncroomsfailed, and the image
+//                label-syncnorooms, label-syncroomsfailed, label-syncoutdated,
+//                and the image
 //                card's label-image,
 //                label-lock, label-unlock, label-imageremove
 //                (defaults are English)
@@ -135,6 +136,7 @@ const LABEL_KEYS = [
   'syncPlayers', 'syncNobody', 'syncYou', 'syncProfileSection',
   'syncJoinSection', 'syncRooms', 'syncRefresh', 'syncUpdated',
   'syncConnections', 'syncCurrent', 'syncNoRooms', 'syncRoomsFailed',
+  'syncOutdated',
   'image', 'lock', 'unlock', 'imageRemove',
 ];
 

@@ -42,6 +42,16 @@ import { dlog, caller, docSummary, vpOf } from './debug.js';
 export const SYNC_KEY = 'battle-mat-sync';
 export const DEFAULT_SERVER = 'https://universal.ramilkarimov.me:9443';
 
+// Bridge version, announced to the server as awareness field `v`. A tab
+// that stays open across a deploy keeps running its old bundle, and an old
+// bridge can undo other peers' edits; the server (MIN_CLIENT_VERSION) queues
+// sync messages until the version checks out and closes outdated clients
+// with CLOSE_OUTDATED - on which this client stops reconnecting and reports
+// status 'outdated' (the screen asks for a reload). Bump when a bridge
+// change must not coexist with older bridges in one room.
+export const SYNC_CLIENT_VERSION = 2;
+export const CLOSE_OUTDATED = 4001;
+
 const LOCAL_ORIGIN = 'battle-mat-local';
 const PUSH_DEBOUNCE = 250;
 const CURSOR_THROTTLE = 40; // ms between cursor awareness broadcasts
@@ -328,7 +338,12 @@ export function startSync(storageKey = DEFAULT_KEY, { server = DEFAULT_SERVER, r
   const store = getStore(storageKey);
   const ydoc = new Y.Doc();
   const wsBase = `${server.replace(/^http/, 'ws')}/ws`;
-  const provider = new WebsocketProvider(wsBase, room, ydoc, { connect: true });
+  // disableBc: y-websocket would otherwise sync same-origin tabs over a
+  // BroadcastChannel, bypassing the server - and relay their edits and
+  // awareness to the server as this tab's own, which defeats the version
+  // gate (a stale tab could write through a fresh one). Every tab has its
+  // own socket; the server is the single source of truth.
+  const provider = new WebsocketProvider(wsBase, room, ydoc, { connect: true, disableBc: true });
 
   const session = {
     room,
@@ -391,6 +406,7 @@ export function startSync(storageKey = DEFAULT_KEY, { server = DEFAULT_SERVER, r
   // AWARENESS_EVENT (see presence.js); the server relays awareness updates
   // to the whole room.
   const awareness = provider.awareness;
+  awareness.setLocalStateField('v', SYNC_CLIENT_VERSION);
   awareness.setLocalStateField('user', localUser(ydoc.clientID));
   const emitAwareness = () => {
     const states = [];
@@ -441,10 +457,23 @@ export function startSync(storageKey = DEFAULT_KEY, { server = DEFAULT_SERVER, r
 
   provider.on('status', ({ status }) => {
     dlog('sync', `provider status: ${status} (room ${room})`);
+    if (session.status === 'outdated') return;
     session.status = status === 'connected' ? 'connected' : 'connecting';
     emitStatus(storageKey, session);
   });
-  provider.on('connection-close', (ev) => dlog('sync', `ws closed code=${ev?.code} reason=${ev?.reason}`));
+  provider.on('connection-close', (ev) => {
+    dlog('sync', `ws closed code=${ev?.code} reason=${ev?.reason}`);
+    if (ev?.code !== CLOSE_OUTDATED) return;
+    // this bundle is older than the server allows: stop retrying (each
+    // retry would be closed again) and let the UI ask for a reload. The
+    // store stays local until then.
+    provider.shouldConnect = false;
+    provider.disconnect();
+    session.status = 'outdated';
+    session.ready = false;
+    session.markReady?.(false);
+    emitStatus(storageKey, session);
+  });
   provider.on('connection-error', (ev) => dlog('sync', 'ws error', ev));
 
   provider.once('sync', () => {

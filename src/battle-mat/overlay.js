@@ -138,6 +138,7 @@ const SCREEN_LABELS = {
   syncCurrent: 'current',
   syncNoRooms: 'No rooms yet',
   syncRoomsFailed: 'Could not load the room list',
+  syncOutdated: 'This page is outdated - reload it to sync',
   image: 'Image',
   lock: 'Lock',
   unlock: 'Unlock',
@@ -290,6 +291,7 @@ const OVERLAY_CSS = `
   .screen-toolbar > .b-map { --tb-accent: #5fb98d; }
   .screen-toolbar > .b-sync { --tb-accent: #58b7d8; }
   .screen-toolbar > .b-sync[data-state="connected"] { color: var(--tb-accent); }
+  .screen-toolbar > .b-sync[data-state="outdated"] { color: #e0464c; }
   .screen-toolbar > button[aria-pressed="true"] { color: var(--tb-accent); }
   .screen-toolbar > .b-dice { color: #7d97e8; }
   .screen-toolbar > button .icon { width: 1.5rem; height: 1.5rem; }
@@ -1515,8 +1517,11 @@ class BattleMatOverlay {
     this._syncRoom = room ?? null;
     this._syncLeave.hidden = status === 'off';
     this._syncCopy.hidden = status !== 'connected';
+    this._syncStatus.classList.toggle('sync-error', status === 'outdated');
     if (status === 'off') {
       this._syncStatus.textContent = L.syncOff;
+    } else if (status === 'outdated') {
+      this._syncStatus.textContent = L.syncOutdated;
     } else {
       const word = status === 'connecting' ? L.syncConnecting : L.syncConnected;
       const code = document.createElement('code');

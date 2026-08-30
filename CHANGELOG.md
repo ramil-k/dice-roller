@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Sync rooms: the bridge announces its version to the server (awareness
+  `v`, `SYNC_CLIENT_VERSION`). A tab that stayed open across a deploy keeps
+  running its old bundle, and an old bridge could undo everyone's deletions
+  (see the fix below); the server now refuses sync from clients below its
+  minimum version and closes them with code 4001. On that code the client
+  stops reconnecting, the sync button turns red and the sync screen says
+  the page is outdated (`label-syncoutdated`) - reload to rejoin.
+
 - Fixed: the `<add-to-battle>` instance badge did not go down when a
   combatant was removed by a sync-room peer or another tab - it re-read
   `localStorage` on the change event, before the store's debounced write
