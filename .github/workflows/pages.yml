@@ -33,6 +33,9 @@ jobs:
       # battle-mat split: every entry plus the lazy/shared battle-mat chunks
       # (a glob, so new entries like battle-toolbar.js ride along).
       - run: cp dist/*.js dist-demo/
+      # Put the previous deploys' chunks back (scripts/carry-chunks.mjs): a
+      # browser with a cached battle-toolbar.js still asks for their names.
+      - run: node scripts/carry-chunks.mjs dist-demo
       - uses: actions/upload-pages-artifact@v5
         with:
           path: dist-demo
