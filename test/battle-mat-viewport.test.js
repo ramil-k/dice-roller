@@ -9,6 +9,7 @@ import {
   panBy,
   zoomAt,
   pinchUpdate,
+  fitBounds,
 } from '../src/battle-mat/viewport.js';
 
 describe('screenToWorld / worldToScreen', () => {
@@ -104,5 +105,44 @@ describe('pinchUpdate', () => {
     const vp = { x: 0, y: 0, zoom: 1 };
     const next = pinchUpdate(vp, { x: 5, y: 5 }, { x: 5, y: 5 }, { x: 0, y: 0 }, { x: 10, y: 10 });
     expect(next.zoom).toBeCloseTo(1);
+  });
+});
+
+describe('fitBounds', () => {
+  it('fits the box inside the padded screen and centres it', () => {
+    const b = { minX: 100, minY: 200, maxX: 2100, maxY: 1200 };
+    const vp = fitBounds(b, 1000, 600, { padding: 50 });
+    expect(vp.zoom).toBeCloseTo(0.45); // width-bound: 900 / 2000
+    const tl = worldToScreen(vp, b.minX, b.minY);
+    const br = worldToScreen(vp, b.maxX, b.maxY);
+    expect(tl.x).toBeCloseTo(50);
+    expect(br.x).toBeCloseTo(950);
+    expect((tl.y + br.y) / 2).toBeCloseTo(300);
+    expect(tl.y).toBeGreaterThanOrEqual(50);
+    expect(br.y).toBeLessThanOrEqual(550);
+  });
+
+  it('caps the zoom at maxZoom for a small box', () => {
+    const vp = fitBounds({ minX: 0, minY: 0, maxX: 64, maxY: 64 }, 1000, 600);
+    expect(vp.zoom).toBe(1);
+    const c = worldToScreen(vp, 32, 32);
+    expect(c.x).toBeCloseTo(500);
+    expect(c.y).toBeCloseTo(300);
+  });
+
+  it('stops at MIN_ZOOM for a huge box', () => {
+    const vp = fitBounds({ minX: 0, minY: 0, maxX: 1e6, maxY: 1e6 }, 1000, 600);
+    expect(vp.zoom).toBe(MIN_ZOOM);
+  });
+
+  it('centres a zero-size box without dividing by zero', () => {
+    const vp = fitBounds({ minX: 10, minY: 20, maxX: 10, maxY: 20 }, 800, 400);
+    expect(vp).toEqual({ x: 10 - 400, y: 20 - 200, zoom: 1 });
+  });
+
+  it('handles a box that is a vertical line', () => {
+    const vp = fitBounds({ minX: 0, minY: 0, maxX: 0, maxY: 1000 }, 800, 600, { padding: 50 });
+    expect(vp.zoom).toBeCloseTo(0.5);
+    expect(Number.isFinite(vp.x)).toBe(true);
   });
 });

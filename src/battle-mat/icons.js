@@ -23,6 +23,8 @@ export const ICONS = {
   download: wrap('<path d="M12 4v11M7.5 11l4.5 4.5L16.5 11M5 19.5h14"/>'),
   upload: wrap('<path d="M12 15V4M7.5 8L12 3.5 16.5 8M5 19.5h14"/>'),
   trash: wrap('<path d="M4.5 6.5h15M9.5 6V4.5h5V6M7 6.5l1 13h8l1-13M10.3 10v6M13.7 10v6"/>'),
+  // frame corners around a dot - "show everything"
+  fit: wrap('<path d="M4 9V5.5A1.5 1.5 0 0 1 5.5 4H9M15 4h3.5A1.5 1.5 0 0 1 20 5.5V9M20 15v3.5a1.5 1.5 0 0 1-1.5 1.5H15M9 20H5.5A1.5 1.5 0 0 1 4 18.5V15"/><circle cx="12" cy="12" r="2"/>'),
   close: wrap('<path d="M6 6l12 12M18 6L6 18"/>'),
   // padlock closed / open (the image card's lock toggle)
   lock: wrap('<rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/><circle cx="12" cy="15.5" r="1.2"/>'),

@@ -35,6 +35,7 @@ import {
   serialize,
   resolveColor,
   cellsForSize,
+  docBounds,
   EXT,
 } from './canvas-doc.js';
 import { clampCellSize, snapTokenOrigin } from './grid.js';
@@ -52,7 +53,7 @@ import {
 import { getAdjectives } from './adjectives.js';
 import { CATEGORIES, iconUrl } from './registry.js';
 import { buildScene, render, applyViewport, updateGrid, renderSelection, clearSelection } from './view.js';
-import { screenToWorld } from './viewport.js';
+import { screenToWorld, fitBounds } from './viewport.js';
 import { dlog, caller, vpOf, docSummary } from './debug.js';
 import { AWARENESS_EVENT, publishPresence, safeColor, safeName } from './presence.js';
 import { attachTools } from './tools.js';
@@ -143,6 +144,7 @@ const SCREEN_LABELS = {
   lock: 'Lock',
   unlock: 'Unlock',
   imageRemove: 'Remove image',
+  fit: 'Show everything',
 };
 
 const TOOLS = [
@@ -1666,6 +1668,7 @@ class BattleMatOverlay {
     this._labelsBtn = action('label', 'Show token names', () => this._toggleLabels());
     this._labelsBtn.setAttribute('aria-pressed', 'false');
     const L = { ...SCREEN_LABELS, ...this.labels };
+    action('fit', L.fit, () => this._fitAll());
     const poolBtn = action('pool', L.pool, () => this._toggleArea('pool'));
     this._screenButtons.set('pool', poolBtn);
     action('download', 'Export map file', () => this._export());
@@ -1893,6 +1896,25 @@ class BattleMatOverlay {
     for (const [tid, btn] of this._toolButtons) btn.setAttribute('aria-pressed', String(tid === id));
   }
 
+  _setViewport(vp) {
+    dlog('overlay', `setViewport (pan/zoom) ${vpOf(this.store.doc)} -> x=${Math.round(vp.x)} y=${Math.round(vp.y)} zoom=${vp.zoom.toFixed(3)}`);
+    getExt(this.store.doc).viewport = vp;
+    applyViewport(this.refs, vp);
+    this._rescaleCursors();
+    this._drawSelection();
+  }
+
+  // Pan and zoom so every token, image and stroke is on screen; an empty map
+  // keeps its view.
+  _fitAll() {
+    const bounds = docBounds(this.store.doc);
+    if (!bounds) return;
+    const r = this.svg.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+    this._setViewport(fitBounds(bounds, r.width, r.height));
+    this._save();
+  }
+
   _wireTools() {
     this.tools = attachTools({
       svg: this.svg,
@@ -1901,13 +1923,7 @@ class BattleMatOverlay {
       getDoc: () => this.store.doc,
       getGrid: () => getExt(this.store.doc).grid,
       getViewport: () => getExt(this.store.doc).viewport,
-      setViewport: (vp) => {
-        dlog('overlay', `setViewport (pan/zoom) ${vpOf(this.store.doc)} -> x=${Math.round(vp.x)} y=${Math.round(vp.y)} zoom=${vp.zoom.toFixed(3)}`);
-        getExt(this.store.doc).viewport = vp;
-        applyViewport(this.refs, vp);
-        this._rescaleCursors();
-        this._drawSelection();
-      },
+      setViewport: (vp) => this._setViewport(vp),
       commit: () => this._commit(),
       save: () => this._save(),
       getTool: () => this.tool,

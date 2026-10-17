@@ -220,6 +220,19 @@ export function getNode(doc, id) {
   return doc.nodes.find((n) => n.id === id) ?? null;
 }
 
+// World-space box around every node (tokens, images, strokes), or null for an
+// empty map - what "show everything" fits into the screen.
+export function docBounds(doc) {
+  let b = null;
+  for (const n of doc.nodes) {
+    if (![n.x, n.y, n.width, n.height].every(Number.isFinite)) continue;
+    b = b
+      ? { minX: Math.min(b.minX, n.x), minY: Math.min(b.minY, n.y), maxX: Math.max(b.maxX, n.x + n.width), maxY: Math.max(b.maxY, n.y + n.height) }
+      : { minX: n.x, minY: n.y, maxX: n.x + n.width, maxY: n.y + n.height };
+  }
+  return b;
+}
+
 export function moveNode(doc, id, x, y) {
   const node = getNode(doc, id);
   if (!node) return false;

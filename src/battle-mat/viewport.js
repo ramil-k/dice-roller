@@ -38,6 +38,22 @@ export function zoomAt(vp, factor, sx, sy) {
   return { x: w.x - sx / zoom, y: w.y - sy / zoom, zoom };
 }
 
+// "Show everything": the viewport that fits world-space `bounds`
+// ({ minX, minY, maxX, maxY }) into a `width`×`height` screen with `padding`
+// px on every side, centred. Zoom is capped at `maxZoom` so a lone token is
+// not blown up to fill the screen; a zero-size box (a single point) just
+// centres at `maxZoom`.
+export function fitBounds(bounds, width, height, { padding = 48, maxZoom = 1 } = {}) {
+  const bw = bounds.maxX - bounds.minX;
+  const bh = bounds.maxY - bounds.minY;
+  const room = (size) => Math.max(size - 2 * padding, 1);
+  const fit = Math.min(bw > 0 ? room(width) / bw : Infinity, bh > 0 ? room(height) / bh : Infinity);
+  const zoom = clampZoom(Math.min(fit, maxZoom));
+  const cx = (bounds.minX + bounds.maxX) / 2;
+  const cy = (bounds.minY + bounds.maxY) / 2;
+  return { x: cx - width / 2 / zoom, y: cy - height / 2 / zoom, zoom };
+}
+
 // Two-finger pinch: `a1`/`a2` are the previous screen positions of the two
 // pointers, `b1`/`b2` the current ones. Scales by the change in pointer
 // distance and keeps the world point under the (moving) midpoint pinned, so

@@ -11,6 +11,7 @@ import {
   removeNode,
   getNode,
   moveNode,
+  docBounds,
   resizeNode,
   isLocked,
   setLocked,
@@ -223,5 +224,27 @@ describe('cellsForSize', () => {
     expect(cellsForSize('колоссальный')).toBe(1);
     expect(cellsForSize(undefined)).toBe(1);
     expect(cellsForSize(2)).toBe(1);
+  });
+});
+
+describe('docBounds', () => {
+  it('is null for an empty map', () => {
+    expect(docBounds(emptyDoc())).toBe(null);
+  });
+
+  it('unions every node box', () => {
+    const doc = emptyDoc();
+    doc.nodes.push(
+      { id: 'a', type: 'text', text: '', x: 10, y: 20, width: 64, height: 64 },
+      { id: 'b', type: 'link', url: 'x', x: -100, y: 300, width: 50, height: 40 },
+      { id: 'c', type: 'text', text: '', x: 500, y: -50, width: 10, height: 10 },
+    );
+    expect(docBounds(doc)).toEqual({ minX: -100, minY: -50, maxX: 510, maxY: 340 });
+  });
+
+  it('skips nodes without finite geometry', () => {
+    const doc = emptyDoc();
+    doc.nodes.push({ id: 'a', type: 'text', text: '', x: 0, y: 0, width: 10, height: 10 }, { id: 'b', type: 'text', x: NaN, y: 0, width: 1, height: 1 });
+    expect(docBounds(doc)).toEqual({ minX: 0, minY: 0, maxX: 10, maxY: 10 });
   });
 });

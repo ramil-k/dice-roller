@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Battle map: a "show everything" button in the tools column (frame icon,
+  `label-fit`) pans and zooms so every token, image and stroke is on screen,
+  centred with a margin. Zoom tops out at 1 so a lone token is not blown up;
+  an empty map keeps its view. The view stays per device, as before.
+
 - Sync rooms: the bridge announces its version to the server (awareness
   `v`, `SYNC_CLIENT_VERSION`). A tab that stayed open across a deploy keeps
   running its old bundle, and an old bridge could undo everyone's deletions

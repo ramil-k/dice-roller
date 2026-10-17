@@ -44,7 +44,8 @@
 //                label-syncnorooms, label-syncroomsfailed, label-syncoutdated,
 //                and the image
 //                card's label-image,
-//                label-lock, label-unlock, label-imageremove
+//                label-lock, label-unlock, label-imageremove, and the map
+//                tools' label-fit ("show everything" button)
 //                (defaults are English)
 
 const DOCK_CSS = `
@@ -137,7 +138,7 @@ const LABEL_KEYS = [
   'syncJoinSection', 'syncRooms', 'syncRefresh', 'syncUpdated',
   'syncConnections', 'syncCurrent', 'syncNoRooms', 'syncRoomsFailed',
   'syncOutdated',
-  'image', 'lock', 'unlock', 'imageRemove',
+  'image', 'lock', 'unlock', 'imageRemove', 'fit',
 ];
 
 import { getAdjectives, setAdjectives } from './battle-mat/adjectives.js';
