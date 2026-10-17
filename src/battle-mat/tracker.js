@@ -124,6 +124,15 @@ const PANEL_CSS = `
     background: var(--bm-trk-fg);
   }
   .trk-list li.active input.name { font-weight: 700; }
+  /* the combatant picked on the map (its token card is open) */
+  .trk-list li.picked {
+    outline: 2px solid var(--bm-trk-accent);
+    outline-offset: -2px;
+    animation: trk-flash 1.2s ease-out;
+  }
+  @keyframes trk-flash {
+    from { background: color-mix(in srgb, var(--bm-trk-accent) 40%, transparent); }
+  }
 
   .trk-list input {
     flex: 0 0 auto;
@@ -238,7 +247,11 @@ export const DEFAULT_LABELS = {
 // the container. `labels` overrides DEFAULT_LABELS (localization).
 // `onCombatantClick(nodeId, clientX, clientY)` (optional) fires on a click on
 // a row's non-interactive parts — the battle screen opens the token card.
-export function buildTracker(container, { storageKey = DEFAULT_KEY, labels = {}, onCombatantClick } = {}) {
+// `onCombatantHover(nodeId | null)` (optional) fires as the pointer enters and
+// leaves a row — the battle screen pulses the token on the map.
+// The returned `pick(nodeId | null, { scroll })` marks a row as the map's
+// selection and, with `scroll`, centres it in the list.
+export function buildTracker(container, { storageKey = DEFAULT_KEY, labels = {}, onCombatantClick, onCombatantHover } = {}) {
   const L = { ...DEFAULT_LABELS, ...labels };
   const store = getStore(storageKey);
   const root = container.getRootNode();
@@ -290,9 +303,24 @@ export function buildTracker(container, { storageKey = DEFAULT_KEY, labels = {},
   const list = el('ol', 'trk-list');
   list.setAttribute('aria-label', L.title);
   const empty = el('div', 'trk-empty', L.empty);
+  // a row rebuilt or removed under the pointer never sends its pointerleave
+  if (onCombatantHover) list.addEventListener('pointerleave', () => onCombatantHover(null));
   container.append(head, list, empty);
 
   const FIELD_SET = { init: setInitiative, hp: setHp, ac: setAc };
+
+  // Scroll only the list (never the page: the tracker also sits in the page
+  // HUD and in <initiative-tracker>), putting the row in its middle.
+  const centerRow = (row, behavior = 'smooth') => {
+    const lr = list.getBoundingClientRect();
+    const rr = row.getBoundingClientRect();
+    list.scrollTo({ top: list.scrollTop + (rr.top - lr.top) - (list.clientHeight - rr.height) / 2, behavior });
+  };
+  const rowFor = (id) => list.querySelector(`li[data-node-id="${CSS.escape(id)}"]`);
+
+  let pickedId = null;
+  // undefined until the first render, which centres the active row instantly
+  let lastActiveId;
 
   function render() {
     const doc = store.doc;
@@ -311,7 +339,13 @@ export function buildTracker(container, { storageKey = DEFAULT_KEY, labels = {},
     list.replaceChildren();
     for (const node of order) {
       const row = el('li');
+      row.dataset.nodeId = node.id;
       row.classList.toggle('active', node.id === combat.activeNodeId);
+      row.classList.toggle('picked', node.id === pickedId);
+      if (onCombatantHover) {
+        row.addEventListener('pointerenter', () => onCombatantHover(node.id));
+        row.addEventListener('pointerleave', () => onCombatantHover(null));
+      }
       if (onCombatantClick) {
         row.classList.add('trk-clickable');
         row.addEventListener('click', (e) => {
@@ -441,6 +475,15 @@ export function buildTracker(container, { storageKey = DEFAULT_KEY, labels = {},
       inp?.select();
     }
     applyRemoteFocus();
+
+    // the turn moved on (or the list just appeared): bring the active row
+    // into the middle of the list
+    const activeId = combat.activeNodeId ?? null;
+    if (activeId !== lastActiveId) {
+      const row = activeId && rowFor(activeId);
+      if (row) centerRow(row, lastActiveId === undefined ? 'instant' : 'smooth');
+      lastActiveId = activeId;
+    }
   }
 
   // --- presence (sync rooms): tell peers which field this player is editing
@@ -503,6 +546,14 @@ export function buildTracker(container, { storageKey = DEFAULT_KEY, labels = {},
   render();
 
   return {
+    pick(nodeId, { scroll = false } = {}) {
+      pickedId = nodeId ?? null;
+      for (const li of list.querySelectorAll('li.picked')) li.classList.remove('picked');
+      const row = pickedId && rowFor(pickedId);
+      if (!row) return;
+      row.classList.add('picked');
+      if (scroll) centerRow(row);
+    },
     dispose() {
       unsubscribe();
       window.removeEventListener(AWARENESS_EVENT, onAwareness);

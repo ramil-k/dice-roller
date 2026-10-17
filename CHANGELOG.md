@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Battle screen: the map and the initiative tracker point at each other.
+  Clicking a token marks its tracker row (outline and a short flash) and,
+  when the tracker is on screen, scrolls the list to centre it. Hovering a
+  tracker row pulses its token on the map; clicking the row pulses it for a
+  couple of seconds. The token whose turn it is glows yellow, and on every
+  turn change the tracker scrolls the active row to the middle of the list
+  (only the list scrolls, never the page). `buildTracker` gained an optional
+  `onCombatantHover` callback and returns `pick(nodeId, { scroll })`.
+
 - Battle map: a "show everything" button in the tools column (frame icon,
   `label-fit`) pans and zooms so every token, image and stroke is on screen,
   centred with a margin. Zoom tops out at 1 so a lone token is not blown up;

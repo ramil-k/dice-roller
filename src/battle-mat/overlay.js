@@ -315,6 +315,14 @@ const OVERLAY_CSS = `
   .token-player .token-ring, .token-ring.token-player { stroke: var(--bm-token-player); }
   .token-monster .token-ring, .token-ring.token-monster { stroke: var(--bm-token-monster); }
   .layer-tokens .token { cursor: grab; }
+  /* whose turn it is: a yellow glow (filter units are world units, so it
+     scales with the token) */
+  .token.active-turn { filter: drop-shadow(0 0 6px var(--bm-accent)) drop-shadow(0 0 2px var(--bm-accent)); }
+  /* the combatant hovered or clicked in the tracker */
+  .token.pulse .token-ring { animation: token-pulse 0.8s ease-in-out infinite; }
+  @keyframes token-pulse {
+    50% { stroke: var(--bm-accent); stroke-width: 9; }
+  }
   .mat[data-tool="select"] .layer-images .image { cursor: grab; }
   .mat[data-tool="select"] .layer-images .image.locked { cursor: default; }
   /* selection frame + resize handles (view.js renderSelection) */
@@ -880,7 +888,14 @@ class BattleMatOverlay {
     this._tracker = buildTracker(this._trackerEl, {
       storageKey: this.storageKey,
       labels: this.labels,
-      onCombatantClick: (id, x, y) => this._openCard(id, x, y),
+      onCombatantClick: (id, x, y) => {
+        this._pulseClick(id);
+        this._openCard(id, x, y);
+      },
+      onCombatantHover: (id) => {
+        this._hoverPulseId = id;
+        this._markTokens();
+      },
     });
 
     this._wireTools();
@@ -918,7 +933,29 @@ class BattleMatOverlay {
   // same card with their size, the lock toggle and a remove button — an open
   // image card *is* the map selection (frame + handles, _drawSelection). One
   // card at a time; a second click on the same node toggles it away.
-  _openCard(id, cx, cy) {
+  // Tracker → map: pulse the token while its row is hovered, and for a few
+  // beats after a click on the row. render() rebuilds the tokens, so the
+  // class is re-applied after every render (_markTokens).
+  _pulseClick(id) {
+    this._clickPulseId = id;
+    clearTimeout(this._clickPulseTimer);
+    this._clickPulseTimer = setTimeout(() => {
+      this._clickPulseId = null;
+      this._markTokens();
+    }, 2400);
+    this._markTokens();
+  }
+
+  _markTokens() {
+    for (const g of this.refs?.tokens.querySelectorAll('.token') ?? []) {
+      const id = g.getAttribute('data-id');
+      g.classList.toggle('pulse', id === this._hoverPulseId || id === this._clickPulseId);
+    }
+  }
+
+  // `fromMap`: opened by a click on the map token, so scroll the tracker to
+  // its row when the tracker is on screen.
+  _openCard(id, cx, cy, { fromMap = false } = {}) {
     if (this._cardId === id && this._card) {
       this._closeCard();
       return;
@@ -933,6 +970,7 @@ class BattleMatOverlay {
     this._renderCard(node);
     this._rootEl.appendChild(card);
     this._drawSelection();
+    if (nodeKind(node) === 'token') this._tracker?.pick(id, { scroll: fromMap && this._ui.tracker });
 
     // next to the click point, clamped into the viewport
     const pad = 8;
@@ -960,6 +998,7 @@ class BattleMatOverlay {
     this.root.removeEventListener('pointerdown', this._cardDismiss, true);
     this._cardDismiss = null;
     this._drawSelection();
+    this._tracker?.pick(null);
   }
 
   // The frame and handles for the card's node when it is an image; the
@@ -1941,7 +1980,7 @@ class BattleMatOverlay {
       onNodeClick: (id, x, y) => {
         // combatants and images get a card; clicks on strokes just deselect
         const kind = nodeKind(getNode(this.store.doc, id));
-        if (kind === 'token' || kind === 'image') this._openCard(id, x, y);
+        if (kind === 'token' || kind === 'image') this._openCard(id, x, y, { fromMap: true });
         else this._closeCard();
       },
     });
@@ -2003,6 +2042,7 @@ class BattleMatOverlay {
     updateGrid(this.refs, ext.grid);
     applyViewport(this.refs, ext.viewport);
     render(this.refs, this.store.doc);
+    this._markTokens();
     this._rescaleCursors();
     this._syncSettingsInputs();
   }
@@ -2030,6 +2070,7 @@ class BattleMatOverlay {
       this._refreshCard();
     } else {
       render(this.refs, this.store.doc);
+      this._markTokens();
       this._rebuildPool();
       this._refreshCard();
     }

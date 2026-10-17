@@ -9,7 +9,7 @@
 // commits (add/remove/import), which is cheap at battle-map scale anyway.
 
 import { svgEl } from './dom.js';
-import { EXT, nodeKind, resolveColor, isLocked } from './canvas-doc.js';
+import { EXT, getExt, nodeKind, resolveColor, isLocked } from './canvas-doc.js';
 import { HANDLES } from './resize.js';
 
 // The "infinite" grid: a pattern-filled rect this large covers any plausible
@@ -206,6 +206,7 @@ export function render(refs, doc) {
   refs.drawings.replaceChildren();
   refs.tokens.replaceChildren();
   refs.labels.replaceChildren();
+  const activeId = getExt(doc).combat.activeNodeId;
 
   for (const node of doc.nodes) {
     const kind = nodeKind(node);
@@ -215,6 +216,8 @@ export function render(refs, doc) {
     const g = svgEl('g', { 'data-id': node.id, transform: `translate(${node.x} ${node.y})` });
     if (kind === 'token') {
       g.classList.add('token');
+      // whose turn it is (overlay.js gives it a yellow glow)
+      if (node.id === activeId) g.classList.add('active-turn');
       g.append(...renderToken(node));
       refs.tokens.appendChild(g);
       refs.labels.appendChild(tokenLabel(node));
