@@ -22,6 +22,7 @@
 
 import { parseFormula, roll, rollDie, poolToParsed, critFromResult, MAX_COUNT, MAX_SIDES } from './dice.js';
 import { buildDieSVG } from './svg.js';
+import { lockScroll, unlockScroll } from './scroll-lock.js';
 
 export { parseFormula, roll, rollDie, poolToParsed };
 
@@ -836,6 +837,7 @@ class DiceOverlay {
   // on top — so the overlay ends up above them with no z-index involved.
   _mount() {
     document.body.appendChild(this.host);
+    lockScroll(this);
     if (this.host.showPopover) {
       this.host.setAttribute('popover', 'manual');
       try {
@@ -848,6 +850,7 @@ class DiceOverlay {
 
   close() {
     clearTimeout(this._revealTimer);
+    unlockScroll(this);
     document.removeEventListener('keydown', this._onKeydown, true);
     if (this.host.parentNode) this.host.parentNode.removeChild(this.host);
     if (this.opener && typeof this.opener.focus === 'function') {

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- The page no longer scrolls under the battle screen while the map is shown,
+  nor under the dice builder / roll result overlay (`src/scroll-lock.js`:
+  `overflow: hidden` + `scrollbar-gutter: stable` on `<html>`, so the scroll
+  position is kept and the page does not shift sideways). The tracker-only
+  HUD leaves the page scrollable.
+
 - Battle screen: the map and the initiative tracker point at each other.
   Clicking a token marks its tracker row (outline and a short flash) and,
   when the tracker is on screen, scrolls the list to centre it. Hovering a

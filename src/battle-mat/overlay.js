@@ -20,6 +20,7 @@
 
 import { el, svgEl } from './dom.js';
 import { ICONS } from './icons.js';
+import { lockScroll, unlockScroll } from '../scroll-lock.js';
 import {
   emptyDoc,
   getExt,
@@ -797,6 +798,7 @@ class BattleMatOverlay {
     clearInterval(this._syncRoomsTimer);
     this._syncRoomsTimer = null;
     saveScreenOpen(false);
+    unlockScroll(this);
     this._closeCard();
     this.tools?.detach();
     this._tracker?.dispose();
@@ -1250,6 +1252,10 @@ class BattleMatOverlay {
       this._rootEl.toggleAttribute(`data-show-${area}`, this._ui[area]);
       this._screenButtons.get(area).setAttribute('aria-pressed', String(this._ui[area]));
     }
+    // the map covers the page, so the page must not scroll under it; the
+    // tracker-only HUD leaves the page usable (and scrollable) beneath
+    if (this._ui.map) lockScroll(this);
+    else unlockScroll(this);
   }
 
   // The dice builder overlay lives in the separate roll-dice chunk; load it on
