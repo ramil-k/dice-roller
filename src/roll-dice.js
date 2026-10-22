@@ -361,26 +361,16 @@ const OVERLAY_CSS = `
     --_crit-failure: var(--rd-crit-failure, #ff5a5a);
     position: fixed;
     inset: 0;
-    /* Fallback stacking for browsers without the Popover API; when the host is
-       promoted into the top layer (see _mount) this is irrelevant — top-layer
-       order is show order, which puts the overlay above popover-based page UI. */
+    /* Fallback stacking for browsers without <dialog>.showModal(); otherwise
+       the wrapping modal dialog sits in the top layer (see _mount) and this is
+       irrelevant. */
     z-index: 2147483647;
     display: grid;
     place-items: center;
     color: var(--rd-fg);
     font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-    /* Popover-UA resets: [popover] gets fit-content sizing, auto margins,
-       border, padding and an opaque background — undo all of that so the
-       overlay stays a transparent full-viewport sheet. */
     width: 100%;
     height: 100%;
-    margin: 0;
-    padding: 0;
-    border: none;
-    max-width: none;
-    max-height: none;
-    overflow: visible;
-    background: transparent;
   }
   .backdrop {
     position: absolute;
@@ -759,9 +749,36 @@ function buildDie(rollObj, crit) {
 // Overlay controller
 // ---------------------------------------------------------------------------
 
+// The overlay is a modal <dialog>: opened from inside another modal dialog
+// (e.g. a page's own showModal() window) it stacks on top of it and becomes
+// the active one. A body-level popover would paint above that dialog too, but
+// would stay inert — visible and unclickable. <dialog> can't host a shadow
+// root, so it wraps the shadow host; its UA box and ::backdrop are reset here,
+// the dimming backdrop lives in the shadow tree.
+const DIALOG_STYLE =
+  'position:fixed;inset:0;width:100%;height:100%;max-width:none;max-height:none;' +
+  'margin:0;padding:0;border:0;background:transparent;overflow:visible;color:inherit';
+let backdropSheetAdded = false;
+
+function addBackdropSheet() {
+  if (backdropSheetAdded || typeof CSSStyleSheet === 'undefined' || !document.adoptedStyleSheets) return;
+  try {
+    const sheet = new CSSStyleSheet();
+    sheet.replaceSync('dialog.rd-overlay::backdrop { background: transparent; }');
+    document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
+    backdropSheetAdded = true;
+  } catch {
+    /* constructable stylesheets unsupported: the UA backdrop tint stays */
+  }
+}
+
 class DiceOverlay {
   constructor() {
+    this.dialog = document.createElement('dialog');
+    this.dialog.className = 'rd-overlay';
+    this.dialog.setAttribute('style', DIALOG_STYLE);
     this.host = document.createElement('div');
+    this.dialog.appendChild(this.host);
     this.root = this.host.attachShadow({ mode: 'open' });
     const style = document.createElement('style');
     style.textContent = OVERLAY_CSS;
@@ -807,7 +824,7 @@ class DiceOverlay {
     // an underlying surface (e.g. the battle screen) decides whether a
     // document-level Escape/Tab is its to handle by where focus is.
     this._els.rerollBtn.focus();
-    document.addEventListener('keydown', this._onKeydown, true);
+    this.dialog.addEventListener('keydown', this._onKeydown);
     this.rollAndShow();
   }
 
@@ -827,32 +844,38 @@ class DiceOverlay {
     // See open(): focus marks this dialog as topmost. The Roll button starts
     // disabled here (empty pool) and can't hold focus, so use Close.
     this.root.querySelector('button.close').focus();
-    document.addEventListener('keydown', this._onKeydown, true);
+    this.dialog.addEventListener('keydown', this._onKeydown);
     this._renderPool();
   }
 
-  // Attach the overlay to the page and, where the Popover API exists, promote
-  // it into the top layer. Page UI built on popovers (dialogs, trackers) also
-  // lives there, and within the top layer the most recently shown entry paints
-  // on top — so the overlay ends up above them with no z-index involved.
+  // Attach the overlay to the page as a modal dialog. showModal() puts it in
+  // the top layer above everything shown before it (page popovers, the battle
+  // screen, other modal dialogs) and makes it the active modal, so it stays
+  // clickable even when opened from inside another modal dialog.
   _mount() {
-    document.body.appendChild(this.host);
+    addBackdropSheet();
+    document.body.appendChild(this.dialog);
     lockScroll(this);
-    if (this.host.showPopover) {
-      this.host.setAttribute('popover', 'manual');
+    if (this.dialog.showModal) {
       try {
-        this.host.showPopover();
+        this.dialog.showModal();
       } catch {
-        /* already shown */
+        /* already open */
       }
+    } else {
+      this.dialog.setAttribute('open', '');
     }
   }
 
   close() {
     clearTimeout(this._revealTimer);
     unlockScroll(this);
-    document.removeEventListener('keydown', this._onKeydown, true);
-    if (this.host.parentNode) this.host.parentNode.removeChild(this.host);
+    this.dialog.removeEventListener('keydown', this._onKeydown);
+    if (this.dialog.open) {
+      if (this.dialog.close) this.dialog.close();
+      else this.dialog.removeAttribute('open');
+    }
+    if (this.dialog.parentNode) this.dialog.parentNode.removeChild(this.dialog);
     if (this.opener && typeof this.opener.focus === 'function') {
       this.opener.focus();
     }

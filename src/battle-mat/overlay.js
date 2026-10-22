@@ -816,7 +816,10 @@ class BattleMatOverlay {
 
   // Attach the overlay and, where the Popover API exists, promote it into the
   // top layer so it paints above any popover-based page UI (top-layer order
-  // is show order — no z-index war). Same pattern as DiceOverlay._mount.
+  // is show order — no z-index war). A body-level popover is inert while a
+  // page's modal <dialog> is open; that's fine here because the screen only
+  // opens from the dock/toolbar, which a modal blocks too. Anything that can
+  // open from inside a modal must be a modal <dialog> itself (DiceOverlay).
   _mount() {
     document.body.appendChild(this.host);
     if (this.host.showPopover) {

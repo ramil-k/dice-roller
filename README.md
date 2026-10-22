@@ -589,6 +589,13 @@ initiative-tracker[data-pinned] {
 The full-screen overlays (dice roller, battle screen) are unaffected — they
 always mount into the top layer regardless of where their button sits.
 
+The dice overlay is a modal `<dialog>` (`showModal()`), so a `<roll-dice>`
+placed inside your own modal dialog works: the overlay stacks above it and
+becomes the active window. Keep that rule for your own UI too — anything that
+opens from inside a modal `<dialog>` must be a modal `<dialog>` itself (or
+live in that dialog's DOM). A popover or `<div>` appended to `<body>` paints
+above the dialog but is inert there: visible, yet ignores clicks.
+
 ## Develop
 
 ```

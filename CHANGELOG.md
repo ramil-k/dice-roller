@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- The dice overlay (roll result and builder) is now a modal `<dialog>`
+  opened with `showModal()` instead of a body-level `popover="manual"`. A
+  `<roll-dice>` chip inside a page's own modal dialog (e.g. a potion builder)
+  used to open an overlay that painted on top but was inert — Reroll, Done,
+  ✕ and the backdrop ignored clicks, only Escape closed it. As a modal
+  dialog it stacks above that window and becomes the active one. Escape is
+  handled on the dialog (no longer a document-level capture listener).
+
 - The page no longer scrolls under the battle screen while the map is shown,
   nor under the dice builder / roll result overlay (`src/scroll-lock.js`:
   `overflow: hidden` + `scrollbar-gutter: stable` on `<html>`, so the scroll
