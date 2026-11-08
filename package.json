@@ -51,7 +51,8 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "vite build --mode lib",
+    "build": "vite build --mode lib && npm run build:worker",
+    "build:worker": "vite build --mode worker",
     "build:demo": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
@@ -63,6 +64,7 @@
     "vitest": "^2.1.0"
   },
   "dependencies": {
+    "y-indexeddb": "^9.0.12",
     "y-websocket": "^3.1.0",
     "yjs": "^13.6.32"
   }

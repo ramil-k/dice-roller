@@ -2,7 +2,7 @@
 // replication is simulated by exchanging Yjs updates between two docs.
 import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
-import { EXT, emptyDoc, makeImage, makeToken } from '../src/battle-mat/canvas-doc.js';
+import { EXT, emptyDoc, makeImage, makeToken, paintCells, paintEdges, terrainNode } from '../src/battle-mat/canvas-doc.js';
 import {
   dataImageNodes,
   displayName,
@@ -10,6 +10,7 @@ import {
   imageUrl,
   isDataImage,
   materializeDoc,
+  mergeLocalEdits,
   parseRoomHash,
   pushDoc,
 } from '../src/battle-mat/sync.js';
@@ -207,6 +208,65 @@ describe('battle-mat sync bridge', () => {
   });
 });
 
+describe('resume merge (the room never replaces the local document)', () => {
+  // the room as it evolved while this tab was away: a peer moved tok-b and
+  // removed img-map (a replica of what the tab last synced, not a rebuild)
+  const roomAfterOffline = (synced) => {
+    const room = new Y.Doc();
+    replicate(synced, room);
+    room.getMap('nodes').get('tok-b').set('x', 999);
+    room.getMap('nodes').delete('img-map');
+    return room;
+  };
+
+  it('re-applies the edits made while away and keeps the peers\' changes', () => {
+    const ydoc = new Y.Doc();
+    pushDoc(ydoc, sampleDoc(), null); // what this tab last synced
+    const room = roomAfterOffline(ydoc);
+    const baseline = materializeDoc(ydoc);
+    // offline: the DM hurt Bakhit and added a goblin
+    const local = structuredClone(baseline);
+    local.nodes.find((n) => n.id === 'tok-a')[EXT].hp = 3;
+    const g = makeToken({ x: 0, y: 128, url: 'g.png', name: 'Goblin 2', tokenKind: 'monster', hp: 7 });
+    g.id = 'tok-g';
+    local.nodes.push(g);
+
+    expect(mergeLocalEdits(ydoc, local, baseline)).toBe(true);
+    syncBoth(ydoc, room);
+    const merged = materializeDoc(ydoc);
+    const ids = merged.nodes.map((n) => n.id);
+    expect(ids).toContain('tok-g');
+    expect(ids).not.toContain('img-map'); // the peer's deletion stands
+    expect(merged.nodes.find((n) => n.id === 'tok-a')[EXT].hp).toBe(3);
+    expect(merged.nodes.find((n) => n.id === 'tok-b').x).toBe(999);
+  });
+
+  it('pushes nothing when there is nothing new', () => {
+    const ydoc = new Y.Doc();
+    pushDoc(ydoc, sampleDoc(), null);
+    const baseline = materializeDoc(ydoc);
+    const ops = [];
+    expect(mergeLocalEdits(ydoc, structuredClone(baseline), baseline, ops)).toBe(true);
+    expect(ops).toEqual([]);
+  });
+
+  it('does not wipe a room from an emptied local encounter', () => {
+    const ydoc = new Y.Doc();
+    pushDoc(ydoc, sampleDoc(), null);
+    const baseline = materializeDoc(ydoc);
+    expect(mergeLocalEdits(ydoc, emptyDoc(), baseline)).toBe(false);
+    expect(ydoc.getMap('nodes').size).toBe(3);
+  });
+
+  it('seeds an empty room from the local encounter (a freshly created room)', () => {
+    const ydoc = new Y.Doc();
+    const baseline = materializeDoc(ydoc);
+    expect(mergeLocalEdits(ydoc, sampleDoc(), baseline)).toBe(true);
+    expect(ydoc.getMap('nodes').size).toBe(3);
+    expect(ydoc.getMap('meta').get('grid.cellSize')).toBe(50);
+  });
+});
+
 describe('images by link', () => {
   it('finds only the nodes whose picture is still inline', () => {
     const doc = sampleDoc();
@@ -257,8 +317,45 @@ describe('player display name', () => {
     expect(displayName(null, 0, { adjectives })).toBe('Reckless Player');
   });
 
+  it('is stable for the same seed across connections', () => {
+    const seed = 123456789;
+    expect(displayName('Ramil', seed, { adjectives })).toBe(displayName('Ramil', seed, { adjectives }));
+    expect(displayName(null, seed, { adjectives, word: 'Player' })).toBe(displayName(null, seed, { adjectives, word: 'Player' }));
+  });
+
   it('numbers nameless players when there are no adjectives', () => {
     expect(displayName(null, 5, { word: 'игрок' })).toBe('игрок 15');
     expect(displayName('Ramil', 5)).toBe('Ramil');
+  });
+
+  it('round-trips terrain nodes and merges painting of different materials', () => {
+    const grid = { cellSize: 64, offsetX: 0, offsetY: 0 };
+    const base = sampleDoc();
+    paintCells(base, 'grass', [[0, 0], [1, 0]], grid);
+    paintEdges(base, 'wall', [[2, 2, 'n']], grid);
+    const y1 = new Y.Doc();
+    const y2 = new Y.Doc();
+    pushDoc(y1, base, null);
+    replicate(y1, y2);
+
+    const out = materializeDoc(y2, {});
+    expect(terrainNode(out, 'grass')[EXT].cells).toEqual([[0, 0], [1, 0]]);
+    expect(terrainNode(out, 'wall')[EXT].edges).toEqual([[2, 2, 'n']]);
+
+    // peer 1 paints water, peer 2 extends the grass: both survive the merge
+    // (structuredClone: like the bridge's snapshot, since materializeDoc
+    // hands out the arrays stored in the Y.Doc by reference)
+    const prev1 = materializeDoc(y1, {});
+    const d1 = structuredClone(prev1);
+    paintCells(d1, 'water', [[5, 5]], grid);
+    pushDoc(y1, d1, prev1);
+    const prev2 = materializeDoc(y2, {});
+    const d2 = structuredClone(prev2);
+    paintCells(d2, 'grass', [[2, 0]], grid);
+    pushDoc(y2, d2, prev2);
+    syncBoth(y1, y2);
+    const merged = materializeDoc(y1, {});
+    expect(terrainNode(merged, 'water')[EXT].cells).toEqual([[5, 5]]);
+    expect(terrainNode(merged, 'grass')[EXT].cells).toEqual([[0, 0], [1, 0], [2, 0]]);
   });
 });

@@ -25,6 +25,12 @@
 //   roster       JSON array of extra pool tokens for the battle screen —
 //                same format as <battle-mat>'s roster (property wins)
 //   dice         space/comma-separated die sizes the dice tray offers
+//   sync-worker  same-origin URL of the sync hub's SharedWorker script
+//                (default "/battle-mat-sync-worker.js"): a one-line shim
+//                that importScripts() dist/battle-mat-sync-worker.js, so
+//                every tab of the site shares one connection to the sync
+//                server; without it (or without SharedWorker) each tab
+//                connects on its own
 //   label-*      localized UI strings for the dock, the battle screen toolbar
 //                and the tracker area: label-map, label-pool, label-dice
 //                plus the tracker's label-title, label-round, label-next,
@@ -42,6 +48,7 @@
 //                label-syncjoinsection, label-syncrooms, label-syncrefresh,
 //                label-syncupdated, label-syncconnections, label-synccurrent,
 //                label-syncnorooms, label-syncroomsfailed, label-syncoutdated,
+//                label-syncoffline, label-syncpending ({n} = edits waiting),
 //                and the image
 //                card's label-image,
 //                label-lock, label-unlock, label-imageremove, and the map
@@ -137,8 +144,13 @@ const LABEL_KEYS = [
   'syncPlayers', 'syncNobody', 'syncYou', 'syncProfileSection',
   'syncJoinSection', 'syncRooms', 'syncRefresh', 'syncUpdated',
   'syncConnections', 'syncCurrent', 'syncNoRooms', 'syncRoomsFailed',
-  'syncOutdated',
+  'syncOutdated', 'syncOffline', 'syncPending',
   'image', 'lock', 'unlock', 'imageRemove', 'fit',
+  'draw', 'terrain', 'terrainBrush', 'terrainErase', 'brush', 'strokeWidth',
+  'sizeThin', 'sizeMedium', 'sizeThick',
+  'matWall', 'matDoor', 'matWater', 'matTree', 'matFloor', 'matGrass',
+  'matDirt', 'matSand', 'matRoad', 'matRock', 'matLava', 'matIce',
+  'matSwamp', 'matPit', 'matDifficult',
 ];
 
 import { getAdjectives, setAdjectives } from './battle-mat/adjectives.js';

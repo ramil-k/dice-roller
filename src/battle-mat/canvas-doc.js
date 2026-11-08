@@ -10,12 +10,18 @@
 //   stroke → type "text"  (empty text; x/y/width/height = bounding box, the
 //                          geometry itself sits in x-battleMat.points relative
 //                          to the node origin so moving the node moves the ink)
+//   terrain → type "text" (empty text; one node per material holding the
+//                          painted grid cells `cells: [[col,row]]` or, for
+//                          walls and doors, the cell edges `edges:
+//                          [[col,row,'n'|'w']]`; x/y/width/height is the
+//                          world bounding box recomputed on every paint)
 // Grid and viewport settings ride in a top-level `x-battleMat` key so an
 // exported map round-trips together with its grid alignment.
 //
 // This module is DOM-free and covered by test/battle-mat-canvas-doc.test.js.
 
 import { dlog, caller } from './debug.js';
+import { edgeSegment } from './grid.js';
 
 export const EXT = 'x-battleMat';
 
@@ -197,11 +203,228 @@ export function makeStroke({ shape = 'pen', points, color = '#e0464c', strokeWid
   };
 }
 
+// ---- terrain ---------------------------------------------------------------
+
+// Materials a terrain brush can paint. `layer` decides both the sub-layer
+// the view draws it in and what the node stores: 'fill' and 'overlay' hold
+// cells (an overlay sits above any fill in the same cell: difficult-terrain
+// hatching over grass), 'edge' holds cell edges (walls, doors). The order is
+// the shelf order.
+export const MATERIALS = [
+  { id: 'wall', layer: 'edge' },
+  { id: 'door', layer: 'edge' },
+  { id: 'floor', layer: 'fill' },
+  { id: 'grass', layer: 'fill' },
+  { id: 'tree', layer: 'fill' },
+  { id: 'water', layer: 'fill' },
+  { id: 'dirt', layer: 'fill' },
+  { id: 'sand', layer: 'fill' },
+  { id: 'road', layer: 'fill' },
+  { id: 'rock', layer: 'fill' },
+  { id: 'swamp', layer: 'fill' },
+  { id: 'ice', layer: 'fill' },
+  { id: 'lava', layer: 'fill' },
+  { id: 'pit', layer: 'fill' },
+  { id: 'difficult', layer: 'overlay' },
+];
+
+const MATERIAL_BY_ID = new Map(MATERIALS.map((m) => [m.id, m]));
+
+export function materialLayer(id) {
+  return MATERIAL_BY_ID.get(id)?.layer ?? null;
+}
+
+const cellKey = ([col, row]) => `${col},${row}`;
+const edgeKey = ([col, row, side]) => `${col},${row},${side}`;
+
+// The single terrain node of a material, or null.
+export function terrainNode(doc, material) {
+  return doc.nodes.find((n) => nodeKind(n) === 'terrain' && n[EXT].material === material) ?? null;
+}
+
+function ensureTerrainNode(doc, material) {
+  const found = terrainNode(doc, material);
+  if (found) return found;
+  const layer = materialLayer(material);
+  if (!layer) throw new Error(`unknown terrain material ${material}`);
+  const node = {
+    id: newId(),
+    type: 'text',
+    text: '',
+    x: 0,
+    y: 0,
+    width: 1,
+    height: 1,
+    [EXT]: { kind: 'terrain', material, ...(layer === 'edge' ? { edges: [] } : { cells: [] }) },
+  };
+  doc.nodes.push(node);
+  return node;
+}
+
+// Recompute a terrain node's world bounding box from its cells/edges under
+// the given grid (the box feeds docBounds / fit-all; rendering reads the
+// cells directly, so a stale box after a grid change is harmless until the
+// next paint or refreshTerrainBounds).
+export function terrainBounds(node, grid) {
+  const ext = node[EXT];
+  const s = grid.cellSize;
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const [col, row] of ext.cells ?? []) {
+    const x = col * s + grid.offsetX;
+    const y = row * s + grid.offsetY;
+    if (x < minX) minX = x;
+    if (y < minY) minY = y;
+    if (x + s > maxX) maxX = x + s;
+    if (y + s > maxY) maxY = y + s;
+  }
+  for (const edge of ext.edges ?? []) {
+    const { x1, y1, x2, y2 } = edgeSegment(edge, grid);
+    minX = Math.min(minX, x1, x2);
+    minY = Math.min(minY, y1, y2);
+    maxX = Math.max(maxX, x1, x2);
+    maxY = Math.max(maxY, y1, y2);
+  }
+  if (!Number.isFinite(minX)) return false;
+  node.x = round(minX);
+  node.y = round(minY);
+  node.width = Math.max(1, round(maxX - minX));
+  node.height = Math.max(1, round(maxY - minY));
+  return true;
+}
+
+export function refreshTerrainBounds(doc, grid) {
+  for (const n of doc.nodes) if (nodeKind(n) === 'terrain') terrainBounds(n, grid);
+}
+
+// Drop a terrain node that has nothing left to draw.
+function pruneTerrain(doc, node) {
+  const ext = node[EXT];
+  if ((ext.cells?.length ?? 0) === 0 && (ext.edges?.length ?? 0) === 0) removeNode(doc, node.id);
+}
+
+// Paint cells with a fill/overlay material. A fill replaces any other fill in
+// the same cells (one ground per cell); an overlay only adds itself. Returns
+// true when the document changed.
+export function paintCells(doc, material, cells, grid) {
+  const layer = materialLayer(material);
+  if (layer !== 'fill' && layer !== 'overlay') return false;
+  const node = ensureTerrainNode(doc, material);
+  const have = new Set(node[EXT].cells.map(cellKey));
+  let changed = false;
+  for (const cell of cells) {
+    const k = cellKey(cell);
+    if (have.has(k)) continue;
+    have.add(k);
+    node[EXT].cells.push([cell[0], cell[1]]);
+    changed = true;
+  }
+  if (layer === 'fill') {
+    for (const other of doc.nodes) {
+      if (other === node || nodeKind(other) !== 'terrain' || materialLayer(other[EXT].material) !== 'fill') continue;
+      if (removeCellsFrom(other, cells)) {
+        changed = true;
+        terrainBounds(other, grid);
+      }
+    }
+    for (const other of doc.nodes.filter((n) => n !== node && nodeKind(n) === 'terrain')) pruneTerrain(doc, other);
+  }
+  if (changed) terrainBounds(node, grid);
+  return changed;
+}
+
+function removeCellsFrom(node, cells) {
+  const drop = new Set(cells.map(cellKey));
+  const before = node[EXT].cells.length;
+  node[EXT].cells = node[EXT].cells.filter((c) => !drop.has(cellKey(c)));
+  return node[EXT].cells.length !== before;
+}
+
+// Erase every fill and overlay from the given cells. Returns true when the
+// document changed.
+export function eraseCells(doc, cells, grid) {
+  let changed = false;
+  for (const node of [...doc.nodes]) {
+    if (nodeKind(node) !== 'terrain' || !node[EXT].cells) continue;
+    if (!removeCellsFrom(node, cells)) continue;
+    changed = true;
+    terrainBounds(node, grid);
+    pruneTerrain(doc, node);
+  }
+  return changed;
+}
+
+// Paint cell edges with an edge material (wall, door). An edge holds one
+// material at a time: a door placed on a wall replaces that wall segment.
+export function paintEdges(doc, material, edges, grid) {
+  if (materialLayer(material) !== 'edge') return false;
+  const node = ensureTerrainNode(doc, material);
+  const have = new Set(node[EXT].edges.map(edgeKey));
+  let changed = false;
+  for (const edge of edges) {
+    const k = edgeKey(edge);
+    if (have.has(k)) continue;
+    have.add(k);
+    node[EXT].edges.push([edge[0], edge[1], edge[2]]);
+    changed = true;
+  }
+  for (const other of [...doc.nodes]) {
+    if (other === node || nodeKind(other) !== 'terrain' || !other[EXT].edges) continue;
+    if (!removeEdgesFrom(other, edges)) continue;
+    changed = true;
+    terrainBounds(other, grid);
+    pruneTerrain(doc, other);
+  }
+  if (changed) terrainBounds(node, grid);
+  return changed;
+}
+
+function removeEdgesFrom(node, edges) {
+  const drop = new Set(edges.map(edgeKey));
+  const before = node[EXT].edges.length;
+  node[EXT].edges = node[EXT].edges.filter((e) => !drop.has(edgeKey(e)));
+  return node[EXT].edges.length !== before;
+}
+
+export function eraseEdges(doc, edges, grid) {
+  let changed = false;
+  for (const node of [...doc.nodes]) {
+    if (nodeKind(node) !== 'terrain' || !node[EXT].edges) continue;
+    if (!removeEdgesFrom(node, edges)) continue;
+    changed = true;
+    terrainBounds(node, grid);
+    pruneTerrain(doc, node);
+  }
+  return changed;
+}
+
+// Edges whose midpoint falls inside any of the given cells: what a terrain
+// eraser sweep takes off the walls.
+export function edgesInCells(doc, cells) {
+  const want = new Set(cells.map(cellKey));
+  const out = [];
+  for (const node of doc.nodes) {
+    if (nodeKind(node) !== 'terrain') continue;
+    for (const edge of node[EXT].edges ?? []) {
+      const [col, row, side] = edge;
+      // the 'n' edge of (col,row) borders cells (col,row) and (col,row-1);
+      // 'w' borders (col,row) and (col-1,row); either neighbor being swept
+      // erases it
+      const a = `${col},${row}`;
+      const b = side === 'n' ? `${col},${row - 1}` : `${col - 1},${row}`;
+      if (want.has(a) || want.has(b)) out.push(edge);
+    }
+  }
+  return out;
+}
+
 // Convenience readers used by rendering and tools. `nodeKind` returns the
 // battle-mat kind or null for foreign nodes (kept for round-tripping).
 export function nodeKind(node) {
   const kind = node?.[EXT]?.kind;
-  return kind === 'token' || kind === 'image' || kind === 'stroke' ? kind : null;
+  return kind === 'token' || kind === 'image' || kind === 'stroke' || kind === 'terrain' ? kind : null;
 }
 
 export function addNode(doc, node) {
@@ -255,7 +478,8 @@ export function resizeNode(doc, id, { x, y, width, height }) {
 
 // Topmost node whose bounding box contains the world point, preferring tokens
 // over strokes over images (matching the visual layer order), and later nodes
-// over earlier ones within a kind (spec: last node paints on top).
+// over earlier ones within a kind (spec: last node paints on top). Terrain is
+// never hit: it is painted and erased by its own tools, not selected.
 export function nodeAt(doc, x, y) {
   for (const kind of ['token', 'stroke', 'image']) {
     for (let i = doc.nodes.length - 1; i >= 0; i--) {

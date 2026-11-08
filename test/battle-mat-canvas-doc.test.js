@@ -20,6 +20,15 @@ import {
   validateCanvas,
   serialize,
   cellsForSize,
+  MATERIALS,
+  materialLayer,
+  terrainNode,
+  paintCells,
+  eraseCells,
+  paintEdges,
+  eraseEdges,
+  edgesInCells,
+  refreshTerrainBounds,
 } from '../src/battle-mat/canvas-doc.js';
 
 const OFFICIAL_TYPES = ['text', 'file', 'link', 'group'];
@@ -246,5 +255,90 @@ describe('docBounds', () => {
     const doc = emptyDoc();
     doc.nodes.push({ id: 'a', type: 'text', text: '', x: 0, y: 0, width: 10, height: 10 }, { id: 'b', type: 'text', x: NaN, y: 0, width: 1, height: 1 });
     expect(docBounds(doc)).toEqual({ minX: 0, minY: 0, maxX: 10, maxY: 10 });
+  });
+});
+
+describe('terrain', () => {
+  const grid = { cellSize: 64, offsetX: 0, offsetY: 0 };
+
+  it('paintCells creates one node per material with a world bounding box', () => {
+    const doc = emptyDoc();
+    expect(paintCells(doc, 'grass', [[1, 1], [2, 1]], grid)).toBe(true);
+    expect(paintCells(doc, 'grass', [[2, 1]], grid)).toBe(false); // already painted
+    const node = terrainNode(doc, 'grass');
+    expect(doc.nodes).toHaveLength(1);
+    expect(node.type).toBe('text');
+    expect(nodeKind(node)).toBe('terrain');
+    expect(node[EXT].cells).toEqual([[1, 1], [2, 1]]);
+    expect([node.x, node.y, node.width, node.height]).toEqual([64, 64, 128, 64]);
+  });
+
+  it('a fill replaces another fill in the same cell, an overlay stacks', () => {
+    const doc = emptyDoc();
+    paintCells(doc, 'grass', [[0, 0], [1, 0]], grid);
+    paintCells(doc, 'water', [[1, 0]], grid);
+    expect(terrainNode(doc, 'grass')[EXT].cells).toEqual([[0, 0]]);
+    expect(terrainNode(doc, 'water')[EXT].cells).toEqual([[1, 0]]);
+    paintCells(doc, 'difficult', [[0, 0]], grid);
+    expect(terrainNode(doc, 'grass')[EXT].cells).toEqual([[0, 0]]);
+    expect(terrainNode(doc, 'difficult')[EXT].cells).toEqual([[0, 0]]);
+    // painting water over the last grass cell removes the empty grass node
+    paintCells(doc, 'water', [[0, 0]], grid);
+    expect(terrainNode(doc, 'grass')).toBeNull();
+    expect(terrainNode(doc, 'difficult')[EXT].cells).toEqual([[0, 0]]);
+  });
+
+  it('eraseCells strips fills and overlays and prunes empty nodes', () => {
+    const doc = emptyDoc();
+    paintCells(doc, 'grass', [[0, 0], [1, 0]], grid);
+    paintCells(doc, 'difficult', [[1, 0]], grid);
+    expect(eraseCells(doc, [[1, 0]], grid)).toBe(true);
+    expect(terrainNode(doc, 'difficult')).toBeNull();
+    expect(terrainNode(doc, 'grass')[EXT].cells).toEqual([[0, 0]]);
+    expect(eraseCells(doc, [[5, 5]], grid)).toBe(false);
+  });
+
+  it('paintEdges stores walls, a door replaces the wall segment, eraseEdges removes', () => {
+    const doc = emptyDoc();
+    expect(paintEdges(doc, 'wall', [[0, 0, 'n'], [1, 0, 'n']], grid)).toBe(true);
+    const wall = terrainNode(doc, 'wall');
+    expect([wall.x, wall.y, wall.width, wall.height]).toEqual([0, 0, 128, 1]);
+    paintEdges(doc, 'door', [[1, 0, 'n']], grid);
+    expect(wall[EXT].edges).toEqual([[0, 0, 'n']]);
+    expect(terrainNode(doc, 'door')[EXT].edges).toEqual([[1, 0, 'n']]);
+    expect(eraseEdges(doc, [[0, 0, 'n'], [1, 0, 'n']], grid)).toBe(true);
+    expect(doc.nodes).toHaveLength(0);
+  });
+
+  it('rejects a material on the wrong layer', () => {
+    const doc = emptyDoc();
+    expect(paintCells(doc, 'wall', [[0, 0]], grid)).toBe(false);
+    expect(paintEdges(doc, 'grass', [[0, 0, 'n']], grid)).toBe(false);
+    expect(doc.nodes).toHaveLength(0);
+  });
+
+  it('edgesInCells finds the walls bordering swept cells', () => {
+    const doc = emptyDoc();
+    paintEdges(doc, 'wall', [[2, 2, 'n'], [2, 2, 'w'], [5, 5, 'n']], grid);
+    expect(edgesInCells(doc, [[2, 1]])).toEqual([[2, 2, 'n']]); // from the cell above
+    expect(edgesInCells(doc, [[1, 2]])).toEqual([[2, 2, 'w']]); // from the cell to the left
+    expect(edgesInCells(doc, [[2, 2]])).toEqual([[2, 2, 'n'], [2, 2, 'w']]);
+  });
+
+  it('nodeAt ignores terrain, docBounds and refreshTerrainBounds include it', () => {
+    const doc = emptyDoc();
+    paintCells(doc, 'water', [[3, 3]], grid);
+    expect(nodeAt(doc, 200, 200)).toBeNull();
+    expect(docBounds(doc)).toEqual({ minX: 192, minY: 192, maxX: 256, maxY: 256 });
+    refreshTerrainBounds(doc, { cellSize: 32, offsetX: 10, offsetY: 0 });
+    expect(docBounds(doc)).toEqual({ minX: 106, minY: 96, maxX: 138, maxY: 128 });
+  });
+
+  it('terrain nodes pass validateCanvas and survive serialization', () => {
+    const doc = emptyDoc();
+    paintCells(doc, 'lava', [[0, 0]], grid);
+    const back = validateCanvas(JSON.parse(serialize(doc)));
+    expect(back.ok).toBe(true);
+    expect(terrainNode(back.doc, 'lava')[EXT].cells).toEqual([[0, 0]]);
   });
 });

@@ -1,9 +1,10 @@
 // Pointer-interaction state machine for the battle mat. One controller owns
 // every pointer/wheel/key event on the map svg and dispatches on the active
 // tool. Modes: idle, panning, pinching, draggingNode, resizingNode (a
-// selected image's handle), drawing, erasing, measuring, placing (armed from
-// the token pool), plus pool drags that start on avatar buttons outside the
-// svg. Locked nodes (canvas-doc isLocked) neither drag, resize nor erase;
+// selected image's handle), drawing, erasing, painting / terrainErasing (the
+// terrain brush and its eraser sweeping grid cells), measuring, placing
+// (armed from the token pool), plus pool drags that start on avatar buttons
+// outside the svg. Locked nodes (canvas-doc isLocked) neither drag, resize nor erase;
 // under the select tool a press on one pans the map, a tap still reports
 // onNodeClick so the overlay can select it and offer the unlock.
 //
@@ -12,20 +13,27 @@
 //   getDoc(), getGrid(), getViewport(), setViewport(vp)
 //   commit()        — structure changed: re-render + autosave
 //   save()          — geometry-only change (viewport): autosave, no re-render
-//   getTool(), getColor(), setStatus(text)
+//   getTool(), getColor(), getStrokeWidth(), setStatus(text)
+//   getMaterial(), getBrush()   — terrain material id and brush size (cells)
 //   placeToken(entry, wx, wy)      — create a pool token at a world point
 //   onPlacingChange(entry | null)  — pool/cursor UI feedback
 //   onNodeClick?(id, clientX, clientY) — select-tool click (no movement) on a
 //                                        node; the overlay opens its card
 
 import { screenToWorld, panBy, zoomAt, pinchUpdate } from './viewport.js';
-import { snapTokenOrigin, measure, formatMeasure } from './grid.js';
-import { getNode, moveNode, removeNode, resizeNode, makeStroke, addNode, nodeKind, isLocked } from './canvas-doc.js';
+import { snapTokenOrigin, measure, formatMeasure, brushCells, nearestEdge, EDGE_SNAP } from './grid.js';
+import {
+  EXT, getNode, moveNode, removeNode, resizeNode, makeStroke, addNode, nodeKind, isLocked,
+  materialLayer, paintCells, eraseCells, paintEdges, eraseEdges, edgesInCells,
+} from './canvas-doc.js';
 import { resizeBox, isCorner } from './resize.js';
-import { pathFrom, moveNodeEl, resizeNodeEl, renderSelection, showRuler, hideRuler } from './view.js';
+import {
+  pathFrom, moveNodeEl, resizeNodeEl, renderSelection, showRuler, hideRuler, updateTerrainEl, showBrush, hideBrush,
+} from './view.js';
 import { svgEl, el } from './dom.js';
 
 const DRAW_TOOLS = ['pen', 'line', 'rect', 'ellipse'];
+const TERRAIN_TOOLS = ['terrain', 'terrain-erase'];
 const CLICK_SLOP = 5; // px of pointer travel that still counts as a click
 const PEN_STEP = 2; // min world-px between recorded pen points
 
@@ -63,7 +71,7 @@ export function attachTools(ctx) {
   const previewAttrs = () => ({
     fill: 'none',
     stroke: ctx.getColor(),
-    'stroke-width': 3,
+    'stroke-width': ctx.getStrokeWidth?.() ?? 3,
     'stroke-linecap': 'round',
     'stroke-linejoin': 'round',
   });
@@ -115,7 +123,9 @@ export function attachTools(ctx) {
       const span = Math.hypot(last.x - anchor.x, last.y - anchor.y);
       const isReal = shape === 'pen' ? points.length > 1 : span >= 2;
       if (isReal) {
-        addNode(ctx.getDoc(), makeStroke({ shape, points: strokePoints, color: ctx.getColor() }));
+        addNode(ctx.getDoc(), makeStroke({
+          shape, points: strokePoints, color: ctx.getColor(), strokeWidth: ctx.getStrokeWidth?.() ?? 3,
+        }));
         ctx.commit();
       }
     }
@@ -134,6 +144,102 @@ export function attachTools(ctx) {
     const id = g.getAttribute('data-id');
     if (isLocked(getNode(ctx.getDoc(), id))) return;
     if (removeNode(ctx.getDoc(), id)) ctx.commit();
+  }
+
+  // ---- terrain brush --------------------------------------------------------
+
+  const terrainIds = () => ctx.getDoc().nodes.filter((n) => nodeKind(n) === 'terrain').map((n) => n.id);
+
+  // What the brush would touch at a world point: the cells under it, or for
+  // a wall/door the nearest grid line when the pointer is close enough to
+  // one (else nothing, so a wall stroke only lands along the lattice).
+  function brushTarget(wp, erase, from = null) {
+    const grid = ctx.getGrid();
+    const material = ctx.getMaterial();
+    if (!erase && materialLayer(material) === 'edge') {
+      // mid-stroke, follow the line the pointer is travelling along
+      let prefer = null;
+      if (from) {
+        const dx = Math.abs(wp.x - from.x);
+        const dy = Math.abs(wp.y - from.y);
+        if (dx + dy > 0.5) prefer = dx >= dy ? 'n' : 'w';
+      }
+      const e = nearestEdge(wp.x, wp.y, grid, prefer);
+      if (e.distance > EDGE_SNAP * grid.cellSize) return null;
+      return { edge: [e.col, e.row, e.side] };
+    }
+    return { cells: brushCells(wp.x, wp.y, ctx.getBrush(), grid) };
+  }
+
+  // id -> cells/edges count: what paintAt compares to find the nodes a brush
+  // step actually changed (a fill replacing another fill touches two)
+  const terrainSizes = () => {
+    const sizes = new Map();
+    for (const n of ctx.getDoc().nodes) {
+      if (nodeKind(n) !== 'terrain') continue;
+      sizes.set(n.id, (n[EXT].cells ?? n[EXT].edges ?? []).length);
+    }
+    return sizes;
+  };
+
+  function previewBrush(wp, erase) {
+    const target = brushTarget(wp, erase);
+    if (target) showBrush(ctx.refs, target, ctx.getGrid());
+    else hideBrush(ctx.refs);
+  }
+
+  function startPainting(e, erase) {
+    const doc = ctx.getDoc();
+    // a snapshot of the terrain nodes so Escape mid-stroke can roll back
+    const snapshot = doc.nodes.filter((n) => nodeKind(n) === 'terrain').map((n) => structuredClone(n));
+    drag = { erase, snapshot, changed: false, last: null };
+    setMode(erase ? 'terrainErasing' : 'painting');
+    paintAt(e);
+  }
+
+  function paintAt(e) {
+    const wp = worldPoint(e);
+    const doc = ctx.getDoc();
+    const grid = ctx.getGrid();
+    const target = brushTarget(wp, drag.erase, drag.last);
+    drag.last = wp;
+    if (target) showBrush(ctx.refs, target, grid);
+    if (!target) return;
+    const before = terrainSizes();
+    let changed = false;
+    if (drag.erase) {
+      const walls = edgesInCells(doc, target.cells);
+      changed = eraseCells(doc, target.cells, grid);
+      if (walls.length && eraseEdges(doc, walls, grid)) changed = true;
+    } else if (target.edge) {
+      changed = paintEdges(doc, ctx.getMaterial(), [target.edge], grid);
+    } else {
+      changed = paintCells(doc, ctx.getMaterial(), target.cells, grid);
+    }
+    if (!changed) return;
+    drag.changed = true;
+    const after = terrainSizes();
+    for (const id of new Set([...before.keys(), ...after.keys()])) {
+      if (before.get(id) !== after.get(id)) updateTerrainEl(ctx.refs, doc, id, grid);
+    }
+  }
+
+  function finishPainting(commit) {
+    const { snapshot, changed } = drag;
+    drag = null;
+    setMode('idle');
+    if (!changed) return;
+    if (commit) {
+      ctx.commit();
+      return;
+    }
+    // roll back: put the pre-stroke terrain nodes back in place of the current ones
+    const doc = ctx.getDoc();
+    const grid = ctx.getGrid();
+    const touched = new Set([...terrainIds(), ...snapshot.map((n) => n.id)]);
+    for (let i = doc.nodes.length - 1; i >= 0; i--) if (nodeKind(doc.nodes[i]) === 'terrain') doc.nodes.splice(i, 1);
+    doc.nodes.push(...snapshot);
+    for (const id of touched) updateTerrainEl(ctx.refs, doc, id, grid);
   }
 
   // ---- resize (selection handles) ------------------------------------------
@@ -160,9 +266,12 @@ export function attachTools(ctx) {
       return;
     }
     if (mode !== 'idle' && mode !== 'placing') return;
-    if (e.button !== 0 && e.button !== 1) return;
+    // the terrain brush erases with the secondary button (see onContextMenu)
+    const terrainRightErase = e.button === 2 && ctx.getTool() === 'terrain' && !spaceHeld;
+    if (e.button !== 0 && e.button !== 1 && !terrainRightErase) return;
     e.preventDefault();
     ctx.svg.setPointerCapture(e.pointerId);
+    if (terrainRightErase) return startPainting(e, true);
 
     // keyed off placingEntry, not mode: a space-pan can interrupt placing
     // without disarming it
@@ -214,6 +323,9 @@ export function attachTools(ctx) {
       return;
     }
 
+    if (tool === 'terrain') return startPainting(e, false);
+    if (tool === 'terrain-erase') return startPainting(e, true);
+
     if (tool === 'ruler') {
       clearTimeout(rulerTimer);
       const wp = worldPoint(e);
@@ -223,7 +335,13 @@ export function attachTools(ctx) {
   }
 
   function onPointerMove(e) {
-    if (!pointers.has(e.pointerId)) return;
+    // hover (no button down): the terrain brush shows its footprint
+    if (!pointers.has(e.pointerId)) {
+      if (mode === 'idle' && TERRAIN_TOOLS.includes(ctx.getTool()) && !spaceHeld) {
+        previewBrush(worldPoint(e), ctx.getTool() === 'terrain-erase');
+      }
+      return;
+    }
     const sp = svgPoint(e);
 
     if (mode === 'pinching') {
@@ -266,6 +384,8 @@ export function attachTools(ctx) {
       updateDrawing(worldPoint(e));
     } else if (mode === 'erasing') {
       eraseAt(e);
+    } else if (mode === 'painting' || mode === 'terrainErasing') {
+      paintAt(e);
     } else if (mode === 'measuring') {
       const wp = worldPoint(e);
       const label = formatMeasure(measure(drag.ax, drag.ay, wp.x, wp.y, ctx.getGrid()));
@@ -315,6 +435,8 @@ export function attachTools(ctx) {
       finishDrawing(true);
     } else if (mode === 'erasing') {
       setMode('idle');
+    } else if (mode === 'painting' || mode === 'terrainErasing') {
+      finishPainting(true);
     } else if (mode === 'measuring') {
       drag = null;
       setMode('idle');
@@ -344,10 +466,21 @@ export function attachTools(ctx) {
       ctx.setStatus('');
       drag = null;
       setMode('idle');
+    } else if (mode === 'painting' || mode === 'terrainErasing') {
+      finishPainting(false);
     } else if (mode === 'panning' || mode === 'erasing') {
       drag = null;
       setMode('idle');
     }
+  }
+
+  function onPointerLeave() {
+    if (mode === 'idle') hideBrush(ctx.refs);
+  }
+
+  // no browser menu where the right button erases terrain
+  function onContextMenu(e) {
+    if (ctx.getTool() === 'terrain' || mode === 'terrainErasing') e.preventDefault();
   }
 
   function onPointerCancel(e) {
@@ -445,6 +578,8 @@ export function attachTools(ctx) {
   ctx.svg.addEventListener('pointermove', onPointerMove);
   ctx.svg.addEventListener('pointerup', onPointerUp);
   ctx.svg.addEventListener('pointercancel', onPointerCancel);
+  ctx.svg.addEventListener('pointerleave', onPointerLeave);
+  ctx.svg.addEventListener('contextmenu', onContextMenu);
   ctx.svg.addEventListener('wheel', onWheel, { passive: false });
   window.addEventListener('keydown', onKeyDown);
   window.addEventListener('keyup', onKeyUp);
@@ -454,6 +589,10 @@ export function attachTools(ctx) {
     startPoolDrag,
     armPlacement(entry) {
       setPlacing(entry);
+    },
+    // the overlay switched tools: drop a stale brush footprint
+    toolChanged() {
+      if (!TERRAIN_TOOLS.includes(ctx.getTool())) hideBrush(ctx.refs);
     },
     // Escape hook: cancel the in-flight interaction if any; report whether
     // something was cancelled so the overlay knows not to close yet.

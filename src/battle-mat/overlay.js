@@ -38,6 +38,8 @@ import {
   cellsForSize,
   docBounds,
   EXT,
+  MATERIALS,
+  refreshTerrainBounds,
 } from './canvas-doc.js';
 import { clampCellSize, snapTokenOrigin } from './grid.js';
 import { getStore, DEFAULT_KEY } from './store.js';
@@ -54,6 +56,7 @@ import {
 import { getAdjectives } from './adjectives.js';
 import { CATEGORIES, iconUrl } from './registry.js';
 import { buildScene, render, applyViewport, updateGrid, renderSelection, clearSelection } from './view.js';
+import { MATERIAL_COLORS, materialSwatch } from './terrain-art.js';
 import { screenToWorld, fitBounds } from './viewport.js';
 import { dlog, caller, vpOf, docSummary } from './debug.js';
 import { AWARENESS_EVENT, publishPresence, safeColor, safeName } from './presence.js';
@@ -66,10 +69,11 @@ const SYNC_ROOMS_POLL = 20000; // ms between room-list refreshes while the sync 
 // Which screen areas are visible — a per-device UI preference, so it lives in
 // its own localStorage key rather than in the shared encounter document.
 const UI_KEY = 'battle-mat-ui';
-const AREAS = ['map', 'pool', 'tracker'];
+// draw / terrain are the tool shelves above the pool (hidden by default)
+const AREAS = ['map', 'pool', 'tracker', 'draw', 'terrain'];
 
 function loadUiState() {
-  const ui = { map: true, pool: true, tracker: true };
+  const ui = { map: true, pool: true, tracker: true, draw: false, terrain: false };
   try {
     const saved = JSON.parse(localStorage.getItem(UI_KEY) ?? '{}');
     for (const area of AREAS) if (typeof saved[area] === 'boolean') ui[area] = saved[area];
@@ -141,23 +145,65 @@ const SCREEN_LABELS = {
   syncNoRooms: 'No rooms yet',
   syncRoomsFailed: 'Could not load the room list',
   syncOutdated: 'This page is outdated - reload it to sync',
+  syncOffline: 'Reconnecting to',
+  syncPending: '{n} edits pending',
   image: 'Image',
   lock: 'Lock',
   unlock: 'Unlock',
   imageRemove: 'Remove image',
   fit: 'Show everything',
+  draw: 'Drawing tools',
+  terrain: 'Terrain',
+  terrainBrush: 'Terrain brush',
+  terrainErase: 'Erase terrain',
+  brush: 'Brush size',
+  strokeWidth: 'Line width',
+  sizeThin: 'Thin',
+  sizeMedium: 'Medium',
+  sizeThick: 'Thick',
+  matWall: 'Wall',
+  matDoor: 'Door',
+  matWater: 'Water',
+  matTree: 'Trees',
+  matFloor: 'Stone floor',
+  matGrass: 'Grass',
+  matDirt: 'Dirt',
+  matSand: 'Sand',
+  matRoad: 'Road',
+  matRock: 'Rock',
+  matLava: 'Lava',
+  matIce: 'Ice and snow',
+  matSwamp: 'Swamp',
+  matPit: 'Pit',
+  matDifficult: 'Difficult terrain',
 };
 
+// label key of a material id (matGrass, matDifficult, ...)
+const matLabelKey = (id) => `mat${id[0].toUpperCase()}${id.slice(1)}`;
+
+// pen/line/rect/ellipse stroke widths offered on the drawing shelf; 3 is the
+// width every stroke had before the choice existed
+const STROKE_WIDTHS = [
+  { value: 2, label: 'sizeThin' },
+  { value: 3, label: 'sizeMedium' },
+  { value: 6, label: 'sizeThick' },
+];
+const BRUSH_SIZES = [1, 2, 3];
+
+// the toolbar column; the drawing tools live on the draw shelf
 const TOOLS = [
   { id: 'select', label: 'Select and move' },
   { id: 'pan', label: 'Pan' },
+  { id: 'eraser', label: 'Eraser' },
+  { id: 'ruler', label: 'Ruler' },
+];
+const DRAW_SHELF_TOOLS = [
   { id: 'pen', label: 'Pen' },
   { id: 'line', label: 'Line' },
   { id: 'rect', label: 'Rectangle' },
   { id: 'ellipse', label: 'Ellipse' },
-  { id: 'eraser', label: 'Eraser' },
-  { id: 'ruler', label: 'Ruler' },
 ];
+const SHELF_OF_TOOL = { pen: 'draw', line: 'draw', rect: 'draw', ellipse: 'draw', terrain: 'terrain', 'terrain-erase': 'terrain' };
 
 // The six JSON Canvas preset colors double as the pen palette, so exported
 // drawings keep first-class spec colors.
@@ -181,6 +227,8 @@ const OVERLAY_CSS = `
     --bm-grid-line: rgb(from var(--bm-fg) r g b / 0.13);
     --bm-token-player: #4a9e6f;
     --bm-token-monster: #cf5a5a;
+    /* terrain material colors (terrain-art.js patterns read these) */
+${Object.entries(MATERIAL_COLORS).map(([id, c]) => `    --bm-mat-${id}: ${c};`).join('\n')}
     /* the tracker panel CSS (tracker.js, injected into this shadow root when
        the tracker area first builds) reads these --bm-trk-* tokens */
     --bm-trk-fg: var(--bm-fg);
@@ -229,9 +277,11 @@ const OVERLAY_CSS = `
     animation: bm-fade 0.15s ease;
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-rows: 1fr max-content fit-content(33%);
+    grid-template-rows: 1fr max-content max-content max-content fit-content(33%);
     grid-template-areas:
       "map toolbar"
+      "draw toolbar"
+      "terrain toolbar"
       "pool toolbar"
       "tracker toolbar";
   }
@@ -241,8 +291,10 @@ const OVERLAY_CSS = `
   /* nothing left to control — hide the toolbar too (Escape still closes,
      and the dock buttons underneath stay clickable to bring areas back) */
   .mat-root:not([data-show-map]):not([data-show-tracker]) .screen-toolbar { display: none; }
-  .mat-root:not([data-show-map]) .pool { display: none; }
+  .mat-root:not([data-show-map]) :is(.pool, .shelf) { display: none; }
   .mat-root:not([data-show-pool]) .pool { display: none; }
+  .mat-root:not([data-show-draw]) .shelf-draw { display: none; }
+  .mat-root:not([data-show-terrain]) .shelf-terrain { display: none; }
   .mat-root:not([data-show-tracker]) .tracker-area { display: none; }
   @keyframes bm-fade { from { opacity: 0; } }
 
@@ -294,6 +346,7 @@ const OVERLAY_CSS = `
   .screen-toolbar > .b-map { --tb-accent: #5fb98d; }
   .screen-toolbar > .b-sync { --tb-accent: #58b7d8; }
   .screen-toolbar > .b-sync[data-state="connected"] { color: var(--tb-accent); }
+  .screen-toolbar > .b-sync[data-state="offline"] { color: #f4a83a; }
   .screen-toolbar > .b-sync[data-state="outdated"] { color: #e0464c; }
   .screen-toolbar > button[aria-pressed="true"] { color: var(--tb-accent); }
   .screen-toolbar > .b-dice { color: #7d97e8; }
@@ -307,7 +360,13 @@ const OVERLAY_CSS = `
   .mat[data-tool="pen"], .mat[data-tool="line"], .mat[data-tool="rect"],
   .mat[data-tool="ellipse"], .mat[data-tool="ruler"] { cursor: crosshair; }
   .mat[data-tool="eraser"] { cursor: cell; }
+  .mat[data-tool="terrain"], .mat[data-tool="terrain-erase"] { cursor: crosshair; }
   .mat[data-mode="placing"] { cursor: copy; }
+  /* painted terrain: never a hit target (its own tools paint and erase it) */
+  .layer-terrain { pointer-events: none; }
+  .terrain-cells { stroke: var(--bm-grid-line); stroke-width: 1; }
+  .brush-preview { fill: rgb(from var(--bm-accent) r g b / 0.25); stroke: var(--bm-accent); stroke-width: 1.5; pointer-events: none; }
+  .brush-preview[data-shape="edge"] { fill: none; stroke: rgb(from var(--bm-accent) r g b / 0.6); stroke-linecap: round; }
 
   .grid-line { stroke: var(--bm-grid-line); stroke-width: 1; }
   /* Light discs: Chikin icons are black line art, so tokens sit on a bright
@@ -414,6 +473,53 @@ const OVERLAY_CSS = `
   /* photo avatars fill the circle (registry line art keeps the padded fit) —
      same split the map's token rendering makes */
   .avatar img.photo { border-radius: 50%; object-fit: cover; }
+  /* --- tool shelves (drawing, terrain): full-width rows above the pool ---- */
+  .shelf {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    overflow-x: auto;
+    background: var(--bm-surface);
+    border-top: 1px solid var(--bm-edge);
+    padding: 0.4rem 0.65rem;
+  }
+  .shelf-draw { grid-area: draw; }
+  .shelf-terrain { grid-area: terrain; }
+  .shelf .divider { flex: 0 0 1px; align-self: stretch; margin: 0.15rem 0.3rem; background: var(--bm-edge); }
+  .shelf button {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    padding: 0;
+    border: none;
+    border-radius: 0.55rem;
+    background: transparent;
+    color: var(--bm-muted);
+    cursor: pointer;
+  }
+  .shelf button:hover { color: var(--bm-fg); background: rgb(from var(--bm-fg) r g b / 0.08); }
+  .shelf button[aria-pressed="true"] { color: var(--bm-bg); background: var(--bm-accent); }
+  .shelf button:focus-visible { outline: 2px solid var(--bm-accent); outline-offset: 2px; }
+  .shelf .icon { width: 1.2rem; height: 1.2rem; }
+  .shelf .swatches { display: flex; gap: 0.35rem; }
+  .shelf button.swatch {
+    width: 1.1rem;
+    height: 1.1rem;
+    border: 2px solid transparent;
+    border-radius: 50%;
+  }
+  .shelf button.swatch[aria-pressed="true"] { border-color: var(--bm-fg); background: inherit; }
+  /* material buttons show one tile of their pattern */
+  .shelf button.material { width: 2.5rem; height: 2.5rem; padding: 0.2rem; }
+  .shelf button.material[aria-pressed="true"] { background: var(--bm-accent); }
+  .shelf .mat-swatch { width: 100%; height: 100%; border-radius: 0.4rem; background: var(--bm-bg); }
+  /* size buttons: a dot sized to the choice */
+  .shelf button.size .dot { border-radius: 50%; background: currentColor; }
+
   .pool-ghost {
     position: fixed;
     transform: translate(-50%, -50%);
@@ -554,6 +660,8 @@ const OVERLAY_CSS = `
   .sync-screen .sync-status code { color: var(--bm-fg); user-select: all; }
   .sync-screen .sync-status a.sync-room { color: var(--bm-fg); text-decoration: underline dotted; text-underline-offset: 0.2em; }
   .sync-screen .sync-error { color: #e0464c; }
+  .sync-screen .sync-offline { color: #f4a83a; }
+  .sync-screen .sync-pending { color: var(--bm-muted); }
   .sync-screen .sync-row { display: flex; flex-wrap: wrap; gap: 0.4rem; }
   .sync-screen .sync-row .sync-updated { align-self: center; color: var(--bm-muted); font-size: 0.8rem; }
   .sync-screen input {
@@ -779,6 +887,11 @@ class BattleMatOverlay {
     this._unsubscribe = this.store.subscribe((e) => this._onStoreEvent(e));
     this.tool = 'select';
     this.color = '1';
+    this.strokeWidth = 3;
+    this.material = 'grass';
+    this.brush = 1;
+    // the tool each shelf re-selects when it is opened
+    this._shelfTool = { draw: 'pen', terrain: 'terrain' };
     this._buildShell();
     this._mount();
     document.addEventListener('keydown', this._onKeydown, true);
@@ -882,7 +995,10 @@ class BattleMatOverlay {
 
     this._trackerEl = el('div', 'tracker-area');
 
-    rootEl.append(this._buildScreenToolbar(), mapArea, this._buildPool(), this._trackerEl, this._status, this._buildSyncPanel());
+    rootEl.append(
+      this._buildScreenToolbar(), mapArea, this._buildDrawShelf(), this._buildTerrainShelf(), this._buildPool(),
+      this._trackerEl, this._status, this._buildSyncPanel(),
+    );
     this._buildFileInputs(rootEl);
     this.root.appendChild(rootEl);
     this._rootEl = rootEl;
@@ -1248,6 +1364,142 @@ class BattleMatOverlay {
     this._ui[area] = !this._ui[area];
     saveUiState(this._ui);
     this._applyUiState();
+    // a shelf opening picks up its last tool; closing the shelf of the
+    // active tool falls back to select
+    if (area === 'draw' || area === 'terrain') {
+      if (this._ui[area]) this._setTool(this._shelfTool[area]);
+      else if (SHELF_OF_TOOL[this.tool] === area) this._setTool('select');
+    }
+  }
+
+  // ---- tool shelves ----------------------------------------------------------
+
+  _toolButton(id, label) {
+    const btn = el('button');
+    btn.type = 'button';
+    btn.setAttribute('aria-label', label);
+    btn.title = label;
+    btn.setAttribute('aria-pressed', String(id === this.tool));
+    btn.innerHTML = ICONS[id];
+    btn.addEventListener('click', () => this._setTool(id));
+    this._toolButtons.set(id, btn);
+    return btn;
+  }
+
+  // A pressed-state group of size choices (line width, brush size): a dot
+  // scaled to each value. `get`/`set` read and write the overlay field.
+  _buildSizeGroup({ label, items, get, set }) {
+    const group = el('div', 'sizes');
+    group.setAttribute('role', 'group');
+    group.setAttribute('aria-label', label);
+    const buttons = new Map();
+    const refresh = () => {
+      for (const [v, b] of buttons) b.setAttribute('aria-pressed', String(v === get()));
+    };
+    for (const { value, label: itemLabel, dot } of items) {
+      const b = el('button', 'size');
+      b.type = 'button';
+      b.setAttribute('aria-label', itemLabel);
+      b.title = itemLabel;
+      const d = el('span', 'dot');
+      d.style.width = `${dot}rem`;
+      d.style.height = `${dot}rem`;
+      b.appendChild(d);
+      b.addEventListener('click', () => {
+        set(value);
+        refresh();
+      });
+      buttons.set(value, b);
+      group.appendChild(b);
+    }
+    refresh();
+    return group;
+  }
+
+  _buildDrawShelf() {
+    const L = { ...SCREEN_LABELS, ...this.labels };
+    const shelf = el('div', 'shelf shelf-draw');
+    shelf.setAttribute('role', 'toolbar');
+    shelf.setAttribute('aria-label', L.draw);
+    for (const { id, label } of DRAW_SHELF_TOOLS) shelf.appendChild(this._toolButton(id, label));
+    shelf.appendChild(el('div', 'divider'));
+
+    const swatches = el('div', 'swatches');
+    swatches.setAttribute('role', 'group');
+    swatches.setAttribute('aria-label', 'Draw color');
+    this._swatchButtons = new Map();
+    for (const { preset, label } of PALETTE) {
+      const b = el('button', 'swatch');
+      b.type = 'button';
+      b.setAttribute('aria-label', `Draw in ${label.toLowerCase()}`);
+      b.title = label;
+      b.style.background = resolveColor(preset);
+      b.setAttribute('aria-pressed', String(preset === this.color));
+      b.addEventListener('click', () => {
+        this.color = preset;
+        for (const [p, sb] of this._swatchButtons) sb.setAttribute('aria-pressed', String(p === preset));
+      });
+      this._swatchButtons.set(preset, b);
+      swatches.appendChild(b);
+    }
+    shelf.appendChild(swatches);
+    shelf.appendChild(el('div', 'divider'));
+
+    shelf.appendChild(this._buildSizeGroup({
+      label: L.strokeWidth,
+      items: STROKE_WIDTHS.map(({ value, label }, i) => ({ value, label: L[label], dot: 0.4 + i * 0.3 })),
+      get: () => this.strokeWidth,
+      set: (v) => {
+        this.strokeWidth = v;
+      },
+    }));
+    return shelf;
+  }
+
+  _buildTerrainShelf() {
+    const L = { ...SCREEN_LABELS, ...this.labels };
+    const shelf = el('div', 'shelf shelf-terrain');
+    shelf.setAttribute('role', 'toolbar');
+    shelf.setAttribute('aria-label', L.terrain);
+
+    this._materialButtons = new Map();
+    const materials = el('div', 'materials');
+    materials.setAttribute('role', 'group');
+    materials.setAttribute('aria-label', L.terrain);
+    materials.style.display = 'flex';
+    materials.style.gap = '0.3rem';
+    for (const { id } of MATERIALS) {
+      const b = el('button', 'material');
+      b.type = 'button';
+      const label = L[matLabelKey(id)];
+      b.setAttribute('aria-label', label);
+      b.title = label;
+      b.appendChild(materialSwatch(id));
+      b.setAttribute('aria-pressed', String(id === this.material));
+      b.addEventListener('click', () => {
+        this.material = id;
+        for (const [m, mb] of this._materialButtons) mb.setAttribute('aria-pressed', String(m === id));
+        // picking a material while erasing means "paint with this"
+        if (this.tool !== 'terrain') this._setTool('terrain');
+      });
+      this._materialButtons.set(id, b);
+      materials.appendChild(b);
+    }
+    shelf.appendChild(materials);
+    shelf.appendChild(el('div', 'divider'));
+
+    shelf.appendChild(this._buildSizeGroup({
+      label: L.brush,
+      items: BRUSH_SIZES.map((n, i) => ({ value: n, label: `${L.brush}: ${n}`, dot: 0.4 + i * 0.3 })),
+      get: () => this.brush,
+      set: (v) => {
+        this.brush = v;
+      },
+    }));
+    shelf.appendChild(el('div', 'divider'));
+    shelf.appendChild(this._toolButton('terrain', L.terrainBrush));
+    shelf.appendChild(this._toolButton('terrain-erase', L.terrainErase));
+    return shelf;
   }
 
   _applyUiState() {
@@ -1560,20 +1812,23 @@ class BattleMatOverlay {
     }
   }
 
-  _renderSyncState({ room, status }) {
+  _renderSyncState({ room, status, pending = 0 }) {
     const L = { ...SCREEN_LABELS, ...this.labels };
     this._syncBtn.setAttribute('data-state', status);
-    this._syncLive = status === 'connected';
+    // offline still has a room: presence is gone but the session, the
+    // invite link and local editing all work
+    this._syncLive = status === 'connected' || status === 'offline';
     this._syncRoom = room ?? null;
     this._syncLeave.hidden = status === 'off';
-    this._syncCopy.hidden = status !== 'connected';
+    this._syncCopy.hidden = !this._syncLive;
     this._syncStatus.classList.toggle('sync-error', status === 'outdated');
+    this._syncStatus.classList.toggle('sync-offline', status === 'offline');
     if (status === 'off') {
       this._syncStatus.textContent = L.syncOff;
     } else if (status === 'outdated') {
       this._syncStatus.textContent = L.syncOutdated;
     } else {
-      const word = status === 'connecting' ? L.syncConnecting : L.syncConnected;
+      const word = status === 'connecting' ? L.syncConnecting : status === 'offline' ? L.syncOffline : L.syncConnected;
       const code = document.createElement('code');
       code.textContent = room ?? '';
       let roomEl = code;
@@ -1586,7 +1841,12 @@ class BattleMatOverlay {
         a.appendChild(code);
         roomEl = a;
       }
-      this._syncStatus.replaceChildren(`${word} `, roomEl);
+      const parts = [`${word} `, roomEl];
+      if (status === 'offline' && pending > 0) {
+        // edits made meanwhile wait in the local replica
+        parts.push(el('span', 'sync-pending', ` ${L.syncPending.replace('{n}', String(pending))}`));
+      }
+      this._syncStatus.replaceChildren(...parts);
     }
     if (!this._syncPanel.hidden) {
       this._renderMembers();
@@ -1675,28 +1935,6 @@ class BattleMatOverlay {
 
     bar.appendChild(el('div', 'divider'));
 
-    const swatches = el('div', 'swatches');
-    swatches.setAttribute('role', 'group');
-    swatches.setAttribute('aria-label', 'Draw color');
-    this._swatchButtons = new Map();
-    for (const { preset, label } of PALETTE) {
-      const b = el('button', 'swatch');
-      b.type = 'button';
-      b.setAttribute('aria-label', `Draw in ${label.toLowerCase()}`);
-      b.title = label;
-      b.style.background = resolveColor(preset);
-      b.setAttribute('aria-pressed', String(preset === this.color));
-      b.addEventListener('click', () => {
-        this.color = preset;
-        for (const [p, sb] of this._swatchButtons) sb.setAttribute('aria-pressed', String(p === preset));
-      });
-      this._swatchButtons.set(preset, b);
-      swatches.appendChild(b);
-    }
-    bar.appendChild(swatches);
-
-    bar.appendChild(el('div', 'divider'));
-
     const action = (icon, label, fn) => {
       const btn = el('button');
       btn.type = 'button';
@@ -1707,6 +1945,13 @@ class BattleMatOverlay {
       bar.appendChild(btn);
       return btn;
     };
+    const L = { ...SCREEN_LABELS, ...this.labels };
+    // the tool shelves (drawing, terrain) toggle like the pool area
+    for (const shelf of ['draw', 'terrain']) {
+      const btn = action(shelf, L[shelf], () => this._toggleArea(shelf));
+      this._screenButtons.set(shelf, btn);
+    }
+    bar.appendChild(el('div', 'divider'));
     action('image', 'Attach image', () => this._imageInput.click());
     this._settingsBtn = action('grid', 'Grid settings', () => this._toggleSettings());
     this._settingsBtn.setAttribute('aria-expanded', 'false');
@@ -1715,7 +1960,6 @@ class BattleMatOverlay {
     // _applyUiState drives its pressed state alongside the column toggles)
     this._labelsBtn = action('label', 'Show token names', () => this._toggleLabels());
     this._labelsBtn.setAttribute('aria-pressed', 'false');
-    const L = { ...SCREEN_LABELS, ...this.labels };
     action('fit', L.fit, () => this._fitAll());
     const poolBtn = action('pool', L.pool, () => this._toggleArea('pool'));
     this._screenButtons.set('pool', poolBtn);
@@ -1932,7 +2176,12 @@ class BattleMatOverlay {
   }
 
   _applyGrid() {
-    updateGrid(this.refs, getExt(this.store.doc).grid);
+    const grid = getExt(this.store.doc).grid;
+    updateGrid(this.refs, grid);
+    // terrain is keyed by cell, so its world boxes and paths follow the grid
+    refreshTerrainBounds(this.store.doc, grid);
+    render(this.refs, this.store.doc);
+    this._markTokens();
     this._save();
   }
 
@@ -1940,8 +2189,10 @@ class BattleMatOverlay {
 
   _setTool(id) {
     this.tool = id;
+    if (SHELF_OF_TOOL[id]) this._shelfTool[SHELF_OF_TOOL[id]] = id;
     this.svg.setAttribute('data-tool', id);
     for (const [tid, btn] of this._toolButtons) btn.setAttribute('aria-pressed', String(tid === id));
+    this.tools?.toolChanged();
   }
 
   _setViewport(vp) {
@@ -1976,6 +2227,9 @@ class BattleMatOverlay {
       save: () => this._save(),
       getTool: () => this.tool,
       getColor: () => this.color,
+      getStrokeWidth: () => this.strokeWidth,
+      getMaterial: () => this.material,
+      getBrush: () => this.brush,
       setStatus: (text) => this._setStatus(text),
       placeToken: (entry, wx, wy) => this._placeToken(entry, wx, wy),
       onPlacingChange: (entry) => {

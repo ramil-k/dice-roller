@@ -7,6 +7,24 @@ import { defineConfig } from 'vite';
 //     (the map implementation loads via dynamic import only when opened) and
 //     UMD bundles cannot code-split.
 export default defineConfig(({ mode }) => {
+  // `vite build --mode worker` → dist/battle-mat-sync-worker.js: the sync
+  // hub as ONE classic script (no imports), so a consumer site can host a
+  // same-origin shim that importScripts() it - SharedWorker only takes
+  // same-origin URLs, and classic importScripts needs no CORS.
+  if (mode === 'worker') {
+    return {
+      build: {
+        lib: {
+          entry: 'src/battle-mat/sync-worker.js',
+          formats: ['iife'],
+          name: 'BattleMatSyncWorker',
+          fileName: () => 'battle-mat-sync-worker.js',
+        },
+        outDir: 'dist',
+        emptyOutDir: false,
+      },
+    };
+  }
   if (mode === 'lib') {
     return {
       build: {

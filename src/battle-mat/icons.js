@@ -30,6 +30,12 @@ export const ICONS = {
   lock: wrap('<rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/><circle cx="12" cy="15.5" r="1.2"/>'),
   unlock: wrap('<rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 7.6-1.7"/><circle cx="12" cy="15.5" r="1.2"/>'),
 
+  // tool shelves: a brush for drawing, a hill with a tree for terrain, and
+  // the terrain eraser (a brush with a cross) for the shelf itself
+  draw: wrap('<path d="M4 20c0-3 1.5-4.5 4-4.5s3.5 1.5 3.5 3.5-1.5 2.5-3.5 2.5c-2 0-4 0-4-1.5z"/><path d="M9.5 15.5L19 6a1.8 1.8 0 0 1 2.5 2.5L12 18"/>'),
+  terrain: wrap('<path d="M2.5 19.5c3-5 6-8 9-8s5 2 7 5 2 3 3 3"/><path d="M16 11.5V7"/><path d="M12.5 7.5a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0z"/>'),
+  'terrain-erase': wrap('<path d="M3 19c0-3 1.5-4.5 4-4.5s3.5 1.5 3.5 3.5S9 20.5 7 20.5 3 20.5 3 19z"/><path d="M8.5 14.5L16 7"/><path d="M15.5 14.5l5 5M20.5 14.5l-5 5"/>'),
+
   // name-tag glyph for the token-name-plates toggle
   label: wrap('<path d="M4 11.5V5.5A1.5 1.5 0 0 1 5.5 4h6l8.5 8.5a1.5 1.5 0 0 1 0 2.1l-5.4 5.4a1.5 1.5 0 0 1-2.1 0z"/><circle cx="8.3" cy="8.3" r="1.3"/>'),
   // Screen-toolbar controls, matching the <battle-toolbar> dock glyphs:

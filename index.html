@@ -249,7 +249,8 @@
       </p>
     </main>
 
-    <battle-toolbar></battle-toolbar>
+    <!-- the sync hub worker: dist/*.js is copied next to the demo on Pages -->
+    <battle-toolbar sync-worker="./battle-mat-sync-worker.js"></battle-toolbar>
 
     <script type="module">
       import './src/roll-dice.js';

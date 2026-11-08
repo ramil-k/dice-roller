@@ -64,3 +64,68 @@ export function formatMeasure(m) {
   const feet = Math.round(m.feet);
   return `${cells} cells · ${feet} ft`;
 }
+
+// ---- terrain painting ------------------------------------------------------
+
+// Cells covered by a square brush of `size` cells per side at a world point.
+// Odd sizes center on the cell under the pointer; even sizes center on the
+// nearest intersection (same rule as snapTokenOrigin), so a 2x2 brush paints
+// exactly four cells. Returns [[col, row], ...] in row-major order.
+export function brushCells(x, y, size, grid) {
+  const n = Math.max(1, Math.round(size));
+  const s = grid.cellSize;
+  let col0;
+  let row0;
+  if (n % 2 === 1) {
+    const { col, row } = cellOf(x, y, grid);
+    col0 = col - (n - 1) / 2;
+    row0 = row - (n - 1) / 2;
+  } else {
+    col0 = Math.round((x - grid.offsetX) / s) - n / 2;
+    row0 = Math.round((y - grid.offsetY) / s) - n / 2;
+  }
+  const cells = [];
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) cells.push([col0 + c, row0 + r]);
+  return cells;
+}
+
+// Max pointer distance from a grid line (as a fraction of the cell) at which
+// a wall stroke still lands on that line.
+export const EDGE_SNAP = 0.35;
+
+// Nearest cell edge to a world point. An edge is identified by the cell it
+// bounds on the north ('n', its top side) or west ('w', its left side), so
+// every grid line segment has exactly one key. `distance` is in world units;
+// callers compare it against EDGE_SNAP * cellSize. `prefer` ('n' | 'w')
+// restricts the choice to edges of that orientation: a wall stroke moving
+// along a grid line wants the segment it runs on, not the perpendicular one
+// it brushes past at a corner.
+export function nearestEdge(x, y, grid, prefer = null) {
+  const s = grid.cellSize;
+  const u = (x - grid.offsetX) / s;
+  const v = (y - grid.offsetY) / s;
+  const col = Math.floor(u);
+  const row = Math.floor(v);
+  const fu = u - col;
+  const fv = v - row;
+  const candidates = [
+    { col, row, side: 'w', d: fu },
+    { col: col + 1, row, side: 'w', d: 1 - fu },
+    { col, row, side: 'n', d: fv },
+    { col, row: row + 1, side: 'n', d: 1 - fv },
+  ];
+  let best = null;
+  for (const c of candidates) {
+    if (prefer && c.side !== prefer) continue;
+    if (!best || c.d < best.d) best = c;
+  }
+  return { col: best.col, row: best.row, side: best.side, distance: best.d * s };
+}
+
+// World-space end points of an edge key, for rendering and hit-testing.
+export function edgeSegment([col, row, side], grid) {
+  const s = grid.cellSize;
+  const x = col * s + grid.offsetX;
+  const y = row * s + grid.offsetY;
+  return side === 'n' ? { x1: x, y1: y, x2: x + s, y2: y } : { x1: x, y1: y, x2: x, y2: y + s };
+}

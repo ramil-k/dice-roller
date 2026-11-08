@@ -13,10 +13,19 @@
 //   meta:  Y.Map with flat "grid.*" / "combat.*" keys and "edges".
 //   The viewport is deliberately NOT synced - pan/zoom stays per device.
 //
-// Room semantics: the room code is the secret. Starting sync against an
-// empty room seeds it from the local encounter; joining a room with content
-// adopts the room's state (the room is the source of truth on connect).
+// Room semantics: the room code is the secret. Joining a room (an explicit
+// act, confirmed by the user) adopts the room's state; an empty room is
+// seeded from the local encounter. Resuming the configured room - page load,
+// reconnect, <add-to-battle> - never replaces the local document: the edits
+// made since the last sync (offline, before the server answered) are diffed
+// into the replica and merge with whatever happened in the room meanwhile.
 // While connected, edits merge live in both directions.
+//
+// Transport: one socket per browser. Sessions talk to the sync hub
+// (sync-hub.js) - a SharedWorker holding the room replica, the WebSocket
+// and an IndexedDB copy - through a MessagePort provider (sync-port.js);
+// without a SharedWorker the hub runs in-page. Reconnects, offline queues
+// and presence keep-alive live there; this module only maps documents.
 //
 // Images: an attached map image starts life as a data URI in the node's url
 // (so the mat works offline and without any server). In a room that is a
@@ -32,12 +41,14 @@
 // button for the current room.
 
 import * as Y from 'yjs';
-import { WebsocketProvider } from 'y-websocket';
+import { HubProvider, openHubPort, setWorkerUrl } from './sync-port.js';
 import { DEFAULT_KEY, getStore } from './store.js';
 import { EXT, getNode } from './canvas-doc.js';
 import { AWARENESS_EVENT, PRESENCE_EVENT } from './presence.js';
 import { getAdjectives } from './adjectives.js';
 import { dlog, caller, docSummary, vpOf } from './debug.js';
+
+export { setWorkerUrl };
 
 export const SYNC_KEY = 'battle-mat-sync';
 export const DEFAULT_SERVER = 'https://universal.ramilkarimov.me:9443';
@@ -46,10 +57,11 @@ export const DEFAULT_SERVER = 'https://universal.ramilkarimov.me:9443';
 // that stays open across a deploy keeps running its old bundle, and an old
 // bridge can undo other peers' edits; the server (MIN_CLIENT_VERSION) queues
 // sync messages until the version checks out and closes outdated clients
-// with CLOSE_OUTDATED - on which this client stops reconnecting and reports
-// status 'outdated' (the screen asks for a reload). Bump when a bridge
-// change must not coexist with older bridges in one room.
-export const SYNC_CLIENT_VERSION = 2;
+// with CLOSE_OUTDATED. The hub turns a tab away as 'outdated' when a newer
+// tab shares its socket, or when the server rejected the version; the
+// screen then asks for a reload. Bump when a bridge change must not coexist
+// with older bridges in one room.
+export const SYNC_CLIENT_VERSION = 3;
 export const CLOSE_OUTDATED = 4001;
 
 const LOCAL_ORIGIN = 'battle-mat-local';
@@ -59,12 +71,16 @@ const CURSOR_THROTTLE = 40; // ms between cursor awareness broadcasts
 // Presence identity: no accounts anywhere. The sync panel lets the player
 // pick a name and a color (persisted in PROFILE_KEY); without them the name
 // falls back to the site's optional tg-login profile (dnd-tg-user), and the
-// color derives from the Yjs client id. Every player additionally gets an
+// color derives from a per-browser seed. Every player additionally gets an
 // instance adjective (the same localizable list that names duplicate
-// combatants), chosen by client id - so two people who are both "Рамиль"
-// still read differently at the table, and a player with no name at all is
-// "Свирепый игрок" - the generic word comes from the toolbar's
-// label-syncplayer (setPlayerWord), "Player" by default.
+// combatants), chosen by the same seed - so two people who are both
+// "Рамиль" still read differently at the table, and a player with no name
+// at all is "Свирепый игрок" - the generic word comes from the toolbar's
+// label-syncplayer (setPlayerWord), "Player" by default. The seed is drawn
+// once and kept in the profile, so the adjective survives reconnects and
+// reloads (a Yjs client id would not), and tabs of one browser share it:
+// `pid` in the awareness state lets peers and the room list count them as
+// one player.
 export const USER_COLORS = ['#e0464c', '#f4a83a', '#f4c430', '#5fb98d', '#58b7d8', '#7d97e8', '#b078d8', '#d86fa8'];
 export const PROFILE_KEY = 'battle-mat-profile';
 
@@ -82,6 +98,19 @@ export function getProfile() {
   return loadProfile();
 }
 
+// The per-browser identity seed, created on first use.
+export function profileSeed(storage = globalThis.localStorage) {
+  const prof = loadProfile(storage);
+  if (Number.isSafeInteger(prof.seed) && prof.seed >= 0) return prof.seed;
+  const seed = Math.floor(Math.random() * 2 ** 31);
+  try {
+    storage.setItem(PROFILE_KEY, JSON.stringify({ ...prof, seed }));
+  } catch {
+    /* storage unavailable - a fresh seed per page load, as before */
+  }
+  return seed;
+}
+
 // Merge {name?, color?} into the stored profile (null clears a field) and
 // push the new identity into every live session, so peers see the rename
 // or recolor immediately.
@@ -97,7 +126,7 @@ export function setProfile(patch, storage = globalThis.localStorage) {
     /* storage unavailable - the change still applies to live sessions */
   }
   for (const session of sessions.values()) {
-    session.provider.awareness.setLocalStateField('user', localUser(session.ydoc.clientID));
+    session.provider.awareness.setLocalStateField('user', localUser());
   }
   return next;
 }
@@ -110,20 +139,22 @@ let playerWord = DEFAULT_PLAYER_WORD;
 export function setPlayerWord(word) {
   playerWord = typeof word === 'string' && word.trim() !== '' ? word.trim() : DEFAULT_PLAYER_WORD;
   for (const session of sessions.values()) {
-    session.provider.awareness.setLocalStateField('user', localUser(session.ydoc.clientID));
+    session.provider.awareness.setLocalStateField('user', localUser());
   }
 }
 
 // Pure: the display name for a player. A nameless player is "<adjective>
 // <word>"; with no adjective list either, "<word> NN" keeps peers apart.
-export function displayName(name, clientId, { adjectives = [], word = DEFAULT_PLAYER_WORD } = {}) {
-  const adjective = adjectives.length > 0 ? adjectives[clientId % adjectives.length] : null;
+// `seed` is any stable non-negative integer (the profile seed).
+export function displayName(name, seed, { adjectives = [], word = DEFAULT_PLAYER_WORD } = {}) {
+  const adjective = adjectives.length > 0 ? adjectives[seed % adjectives.length] : null;
   const who = typeof name === 'string' && name.trim() !== '' ? name.trim() : null;
-  if (adjective === null && who === null) return `${word} ${(clientId % 90) + 10}`;
+  if (adjective === null && who === null) return `${word} ${(seed % 90) + 10}`;
   return [adjective, who ?? word].filter(Boolean).join(' ').slice(0, 32);
 }
 
-function localUser(clientId) {
+function localUser() {
+  const seed = profileSeed();
   const prof = loadProfile();
   let name = typeof prof.name === 'string' && prof.name.trim() !== '' ? prof.name.trim() : null;
   if (name === null) {
@@ -137,8 +168,8 @@ function localUser(clientId) {
   const color =
     typeof prof.color === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(prof.color)
       ? prof.color
-      : USER_COLORS[clientId % USER_COLORS.length];
-  return { name: displayName(name, clientId, { adjectives: getAdjectives(), word: playerWord }), color };
+      : USER_COLORS[seed % USER_COLORS.length];
+  return { name: displayName(name, seed, { adjectives: getAdjectives(), word: playerWord }), color, pid: seed };
 }
 
 // ---------------------------------------------------------------------------
@@ -321,29 +352,77 @@ const emitStatus = (key, session) => {
   if (typeof window === 'undefined') return;
   window.dispatchEvent(
     new CustomEvent('battle-mat-sync-status', {
-      detail: { key, room: session?.room ?? null, status: session?.status ?? 'off' },
+      detail: {
+        key,
+        room: session?.room ?? null,
+        status: session?.status ?? 'off',
+        pending: session?.provider?.pending ?? 0,
+      },
     }),
   );
 };
 
+// { room, status, pending } - status is 'off' | 'connecting' | 'connected'
+// | 'offline' | 'outdated'; pending counts this browser's edits the server
+// has not seen yet (only meaningful while offline).
 export function syncState(storageKey = DEFAULT_KEY) {
   const s = sessions.get(storageKey);
-  return s ? { room: s.room, status: s.status } : { room: null, status: 'off' };
+  return s
+    ? { room: s.room, status: s.status, pending: s.provider.pending ?? 0 }
+    : { room: null, status: 'off', pending: 0 };
+}
+
+// Network back / tab visible again: have every session's hub reconnect
+// right away instead of waiting out its backoff or the 30 s silence watchdog.
+let wakeInstalled = false;
+const wakeAll = () => {
+  for (const session of sessions.values()) session.provider.wake?.();
+};
+const installWake = () => {
+  if (wakeInstalled || typeof window === 'undefined') return;
+  wakeInstalled = true;
+  window.addEventListener('online', wakeAll);
+  window.addEventListener('pageshow', wakeAll);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') wakeAll();
+  });
+  // best effort: tell the hub this tab is gone so peers lose its cursor at
+  // once rather than after the liveness timeout (a page parked in the
+  // back/forward cache keeps its port - it may come back)
+  window.addEventListener('pagehide', (e) => {
+    if (e.persisted) return;
+    for (const session of sessions.values()) session.provider.destroy();
+  });
+};
+
+// Pure: the merge-on-resume step. `baseline` is the plain doc materialized
+// from the replica as it was when the session caught up; `doc` is the
+// store's document, i.e. that same baseline plus whatever was edited while
+// the room was out of reach. Diffing the two into the Y.Doc re-applies
+// exactly those edits (a deleted-by-peer node is not resurrected, see
+// pushDoc). Returns false - and pushes nothing - when the local doc is empty
+// while the replica is not: an emptied encounter resuming into a live room
+// would otherwise wipe it, and losing a local "clear" is the lesser evil.
+export function mergeLocalEdits(ydoc, doc, baseline, ops) {
+  const localNodes = doc.nodes?.length ?? 0;
+  const replicaNodes = baseline.nodes?.length ?? 0;
+  if (localNodes === 0 && replicaNodes > 0) {
+    ops?.push('local doc empty, replica is not - adopting the room instead of wiping it');
+    return false;
+  }
+  pushDoc(ydoc, doc, baseline, ops);
+  return true;
 }
 
 // Connect the store to a room. Resolves the session once the first sync with
-// the server finished (state adopted or seeded).
-export function startSync(storageKey = DEFAULT_KEY, { server = DEFAULT_SERVER, room } = {}) {
+// the hub finished. `adopt: true` (an explicit join) replaces the local
+// encounter with the room's state; otherwise local edits merge into it.
+export function startSync(storageKey = DEFAULT_KEY, { server = DEFAULT_SERVER, room, adopt = false } = {}) {
   stopSync(storageKey, { forget: false });
+  installWake();
   const store = getStore(storageKey);
   const ydoc = new Y.Doc();
-  const wsBase = `${server.replace(/^http/, 'ws')}/ws`;
-  // disableBc: y-websocket would otherwise sync same-origin tabs over a
-  // BroadcastChannel, bypassing the server - and relay their edits and
-  // awareness to the server as this tab's own, which defeats the version
-  // gate (a stale tab could write through a fresh one). Every tab has its
-  // own socket; the server is the single source of truth.
-  const provider = new WebsocketProvider(wsBase, room, ydoc, { connect: true, disableBc: true });
+  const provider = new HubProvider(ydoc, { room, server, version: SYNC_CLIENT_VERSION });
 
   const session = {
     room,
@@ -357,8 +436,8 @@ export function startSync(storageKey = DEFAULT_KEY, { server = DEFAULT_SERVER, r
     pushTimer: null,
     externalizing: null,
   };
-  // resolves once the first sync with the server finished (or the session
-  // was stopped before that) - ensureSync() waits on it
+  // resolves once the first sync finished (or the session was stopped before
+  // that) - ensureSync() waits on it
   session.whenReady = new Promise((resolve) => {
     session.markReady = resolve;
   });
@@ -396,18 +475,18 @@ export function startSync(storageKey = DEFAULT_KEY, { server = DEFAULT_SERVER, r
       session.applying = false;
     }
   };
-  dlog('sync', `startSync room=${room} server=${server} clientID=${ydoc.clientID}`, {
+  dlog('sync', `startSync room=${room} server=${server} clientID=${ydoc.clientID} adopt=${adopt}`, {
     local: docSummary(store.doc),
     from: caller(),
   });
 
   // --- presence: cursors and tracker focus ride on Yjs awareness. The UI
   // publishes local state via PRESENCE_EVENT and renders peers from
-  // AWARENESS_EVENT (see presence.js); the server relays awareness updates
+  // AWARENESS_EVENT (see presence.js); the hub relays awareness updates
   // to the whole room.
   const awareness = provider.awareness;
   awareness.setLocalStateField('v', SYNC_CLIENT_VERSION);
-  awareness.setLocalStateField('user', localUser(ydoc.clientID));
+  awareness.setLocalStateField('user', localUser());
   const emitAwareness = () => {
     const states = [];
     awareness.getStates().forEach((state, clientId) => {
@@ -455,44 +534,50 @@ export function startSync(storageKey = DEFAULT_KEY, { server = DEFAULT_SERVER, r
     applyRemote();
   });
 
-  provider.on('status', ({ status }) => {
-    dlog('sync', `provider status: ${status} (room ${room})`);
-    if (session.status === 'outdated') return;
-    session.status = status === 'connected' ? 'connected' : 'connecting';
+  provider.on('status', ({ status, pending }) => {
+    dlog('sync', `hub status: ${status} pending=${pending} (room ${room})`);
+    if (status === 'outdated') {
+      // this bundle is older than the room allows: the hub stopped serving
+      // this tab; the UI asks for a reload and the store stays local
+      session.status = 'outdated';
+      session.ready = false;
+      session.markReady?.(false);
+    } else if (session.status !== 'outdated') {
+      // before the first sync everything reads as connecting
+      session.status = session.ready ? status : 'connecting';
+    }
     emitStatus(storageKey, session);
   });
-  provider.on('connection-close', (ev) => {
-    dlog('sync', `ws closed code=${ev?.code} reason=${ev?.reason}`);
-    if (ev?.code !== CLOSE_OUTDATED) return;
-    // this bundle is older than the server allows: stop retrying (each
-    // retry would be closed again) and let the UI ask for a reload. The
-    // store stays local until then.
-    provider.shouldConnect = false;
-    provider.disconnect();
-    session.status = 'outdated';
-    session.ready = false;
-    session.markReady?.(false);
-    emitStatus(storageKey, session);
-  });
-  provider.on('connection-error', (ev) => dlog('sync', 'ws error', ev));
 
   provider.once('sync', () => {
-    dlog('sync', `first sync with room ${room}: ${hasContent(ydoc) ? 'room has content - adopting it' : 'room empty - seeding from local'}`, {
-      yNodes: ydoc.getMap('nodes').size,
-      yMeta: ydoc.getMap('meta').toJSON(),
-    });
-    if (hasContent(ydoc)) {
-      applyRemote(); // the room is the source of truth
+    if (session.status === 'outdated') return;
+    const hasRoom = hasContent(ydoc);
+    const ops = [];
+    if (adopt) {
+      dlog('sync', `first sync with room ${room} (join): ${hasRoom ? 'room has content - adopting it' : 'room empty - seeding from local'}`);
+      if (hasRoom) applyRemote();
+      else pushNow();
     } else {
-      pushNow(); // fresh room - seed it from the local encounter
+      // resume: the replica is the baseline, the store carries it plus the
+      // edits made since; diff those in, then materialize the merge
+      const baseline = materializeDoc(ydoc, { viewport: store.doc[EXT]?.viewport });
+      const merged = mergeLocalEdits(ydoc, store.doc, baseline, ops);
+      dlog('sync', `first sync with room ${room} (resume): ${merged ? `${ops.length} local op(s) merged` : 'adopted the room'}`, { ops });
+      applyRemote();
     }
     session.ready = true;
-    session.status = 'connected';
+    session.status = provider.status === 'connected' ? 'connected' : provider.status === 'offline' ? 'offline' : 'connecting';
     emitStatus(storageKey, session);
     session.markReady(true);
     // inline images (the seed, or a room from before images-by-link) move to
     // the server now that the session is up
     externalizeImages(storageKey);
+  });
+
+  openHubPort(provider.hello).then((hub) => {
+    if (sessions.get(storageKey) !== session) return; // stopped meanwhile
+    dlog('sync', `hub port: ${hub.kind}`);
+    provider.connect(hub);
   });
 
   emitStatus(storageKey, session);
@@ -545,7 +630,7 @@ export function stopSync(storageKey = DEFAULT_KEY, { forget = true } = {}) {
     session.unsubscribe?.();
     session.markReady?.(false);
     getStore(storageKey).synced = false;
-    session.provider.destroy();
+    session.provider.destroy(); // tells the hub goodbye - peers drop our cursor
     session.ydoc.destroy();
     sessions.delete(storageKey);
     // peers are gone from this client's point of view - let the UI clear
@@ -590,14 +675,26 @@ export function roomMembers(storageKey = DEFAULT_KEY) {
   const s = sessions.get(storageKey);
   if (!s) return [];
   const out = [];
+  const seen = new Set(); // tabs of one browser share a pid - one player
   s.provider.awareness.getStates().forEach((state, clientId) => {
     if (!state?.user) return;
-    out.push({ clientId, name: state.user.name, color: state.user.color, self: clientId === s.ydoc.clientID });
+    const self = clientId === s.ydoc.clientID;
+    const pid = state.user.pid;
+    if (pid != null) {
+      if (seen.has(pid) && !self) return;
+      seen.add(pid);
+    }
+    if (self) {
+      const i = out.findIndex((m) => pid != null && m.pid === pid);
+      if (i >= 0) out.splice(i, 1);
+    }
+    out.push({ clientId, name: state.user.name, color: state.user.color, self, pid });
   });
   return out.sort((a, b) => Number(b.self) - Number(a.self) || String(a.name).localeCompare(String(b.name)));
 }
 
-// Create a room seeded from the current encounter, remember it, connect.
+// Create a room seeded from the current encounter, remember it, connect
+// (a fresh room has no content, so the resume merge is the seed).
 export async function createAndConnect(storageKey = DEFAULT_KEY, server = DEFAULT_SERVER) {
   const room = await createRoom(server);
   saveSyncConfig({ server, room });
@@ -605,11 +702,12 @@ export async function createAndConnect(storageKey = DEFAULT_KEY, server = DEFAUL
   return room;
 }
 
-// Join an existing room (its state replaces the local encounter).
+// Join an existing room (its state replaces the local encounter - the one
+// path that adopts; see startSync).
 export async function joinRoom(room, storageKey = DEFAULT_KEY, server = DEFAULT_SERVER) {
   if (!(await roomExists(room, server))) throw new Error('unknown-room');
   saveSyncConfig({ server, room });
-  startSync(storageKey, { server, room });
+  startSync(storageKey, { server, room, adopt: true });
 }
 
 // --- invite links (#bm-room=<code>) ----------------------------------------
@@ -671,6 +769,7 @@ export async function joinFromLink(room, storageKey = DEFAULT_KEY, { confirmText
 // when a feature needs the room: the battle screen opening, an
 // <add-to-battle> click. (Sessions are not started on plain page loads -
 // the chunk bundles yjs, and a page nobody edits on needs no connection.)
+// Resuming merges: local edits made meanwhile are kept, see startSync.
 export function maybeStartSync(storageKey = DEFAULT_KEY) {
   const cfg = loadSyncConfig();
   if (!cfg || sessions.has(storageKey)) return;
@@ -678,11 +777,11 @@ export function maybeStartSync(storageKey = DEFAULT_KEY) {
 }
 
 // Make sure the configured room (if any) is live before an edit: starts the
-// session and waits for its first sync, so the room state has replaced the
-// local doc and the edit lands in the room instead of being overwritten by
-// it. Resolves true when the room is ready, false when there is no room
-// configured, the session stopped, or the server did not answer within
-// `timeout` (the caller then proceeds locally, as it would offline).
+// session and waits for its first sync, so the edit lands in the room
+// directly. Resolves true when the room is ready, false when there is no
+// room configured, the session stopped, or the hub did not answer within
+// `timeout` - the caller then proceeds locally; the edit is not lost, the
+// resume merge pushes it once the room catches up.
 export async function ensureSync(storageKey = DEFAULT_KEY, { timeout = 5000 } = {}) {
   maybeStartSync(storageKey);
   const session = sessions.get(storageKey);

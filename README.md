@@ -129,7 +129,8 @@ import '@ramilkos/roll-dice/battle-toolbar';
 | `storage-key` | `localStorage` key of the shared encounter                   | `battle-mat-canvas` |
 | `roster`      | JSON array of extra pool tokens; the property wins           | `[]`                |
 | `dice`        | die sizes the builder tray offers, e.g. `"6 20"`             | `4 6 8 10 12 20`    |
-| `label-*`     | localized UI strings for the dock, the battle screen toolbar and the tracker area: `label-map`, `label-pool`, `label-dice` plus the tracker's `label-title`, `label-round`, `label-next`, `label-fill`, `label-reset`, `label-resetconfirm`, `label-empty`, `label-name`, `label-hp`, `label-ac`, `label-init`, `label-remove`, `label-link`, the image card's `label-image`, `label-lock`, `label-unlock`, `label-imageremove`, and the sync panel's `label-sync`, `label-synccreate`, `label-syncjoin`, `label-syncleave`, `label-synccodeplaceholder`, `label-syncoff`, `label-syncconnecting`, `label-syncconnected`, `label-syncunknownroom`, `label-syncfailed`, `label-syncjoinconfirm`, `label-synccopylink`, `label-synccopied`, `label-syncname`, `label-synccolor`, `label-syncplayer` (the word shown for a nameless player) | English |
+| `sync-worker` | same-origin URL of the sync hub worker shim (see [one connection per browser](#one-connection-per-browser)) | `/battle-mat-sync-worker.js` |
+| `label-*`     | localized UI strings for the dock, the battle screen toolbar and the tracker area: `label-map`, `label-pool`, `label-dice` plus the tracker's `label-title`, `label-round`, `label-next`, `label-fill`, `label-reset`, `label-resetconfirm`, `label-empty`, `label-name`, `label-hp`, `label-ac`, `label-init`, `label-remove`, `label-link`, the image card's `label-image`, `label-lock`, `label-unlock`, `label-imageremove`, and the sync panel's `label-sync`, `label-synccreate`, `label-syncjoin`, `label-syncleave`, `label-synccodeplaceholder`, `label-syncoff`, `label-syncconnecting`, `label-syncconnected`, `label-syncunknownroom`, `label-syncfailed`, `label-syncjoinconfirm`, `label-synccopylink`, `label-synccopied`, `label-syncname`, `label-synccolor`, `label-syncplayer` (the word shown for a nameless player), `label-syncoffline`, `label-syncpending` (`{n}` = edits waiting for the server) | English |
 
 Unlike the other widgets the dock pins itself flush into the corner
 (`position: fixed; right: 0; bottom: 0`, only the top-left corner rounded);
@@ -232,8 +233,28 @@ token when it is placed and surface in the initiative tracker.
 - **Select / move** — drag tokens, drawings, and images; drag empty space to pan.
 - **Pan** — drag anywhere to pan. Space+drag or middle-drag pans with any tool;
   the mouse wheel and two-finger pinch zoom around the cursor.
-- **Pen, Line, Rectangle, Ellipse** — draw in one of the six preset colors.
-- **Eraser** — click or sweep to remove a whole stroke, token, or image.
+- **Drawing shelf** (brush button in the tools column, `label-draw`) — a row
+  above the token pool with **Pen, Line, Rectangle, Ellipse**, the six preset
+  colors and three line widths (`label-strokewidth`; thin / medium / thick =
+  2 / 3 / 6 px, stored per stroke as `strokeWidth`). Opening the shelf
+  re-selects its last tool; closing it while one of its tools is active falls
+  back to Select.
+- **Terrain shelf** (hill button, `label-terrain`) — paints the ground by
+  grid cells. Pick a material, a brush of 1, 2 or 3 cells (`label-brush`)
+  and sweep over the map with the brush tool (`label-terrainbrush`); the brush footprint follows the pointer. Fill
+  materials (stone floor, grass, trees, water, dirt, sand, road, rock,
+  swamp, ice and snow, lava, pit) replace each other cell by cell; the
+  **difficult terrain** hatching is an overlay that stacks on any fill.
+  **Wall** and **door** are drawn along grid lines: drag near a line and the
+  stroke lands on it (more than a third of a cell away from any line nothing
+  is drawn); a door placed on a wall replaces that segment. The **terrain
+  eraser** (`label-terrainerase`) clears every fill, overlay and wall under
+  the brush; the right mouse button does the same while the brush is active.
+  Terrain always paints above attached images and below the ink and the
+  tokens, and it never gets selected, dragged or hit by the stroke eraser.
+  Material colors are `--bm-mat-<id>` custom properties (see Theming).
+- **Eraser** — click or sweep to remove a whole stroke, token, or image
+  (terrain has its own eraser on the terrain shelf).
 - **Ruler** — drag to measure; shows `cells · feet` live (5 ft per cell by
   default, configurable).
 - **Attach image** — pick a file or drop one onto the map. Images larger than
@@ -282,8 +303,9 @@ page over the battle screen (Escape or the close button leaves it). **Create
 a room from this encounter** asks the sync server for a room code (like
 `brave-otter-4821`) and seeds the room with the current encounter; share the
 code with the table. **Join** connects to an existing room - the room's state
-replaces the local encounter (the screen warns first). The session
-(`battle-mat-sync` in `localStorage`) survives reloads and reconnects on
+replaces the local encounter (the screen warns first; this is the only
+moment the room ever replaces the local document). The session
+(`battle-mat-sync` in `localStorage`) survives reloads and resumes on
 page load, battle screen open or not.
 
 The screen also lists the **players in the current room** (live, from
@@ -301,12 +323,48 @@ the device has no local encounter, after a confirm when it would replace one
 (a link to the already-joined room just resumes it). The hash is handled
 client-side and stripped from the URL after joining.
 
+**Offline and reconnects.** The connection heals itself: a dropped network,
+a laptop waking up, a server restart or deploy - the hub reconnects with a
+short backoff, and at once when the network comes back or the tab becomes
+visible. Meanwhile the map keeps working: edits land in the local replica
+(kept in IndexedDB, so they survive a reload) and the sync panel shows
+**Reconnecting to `<code>`** with the number of edits waiting
+(`label-syncoffline`, `label-syncpending`); the dock's sync button turns
+amber. When the server is back, those edits merge into the room and the
+room's changes merge into the map - nothing is replaced. The same holds for
+resuming a room after a reload or an `<add-to-battle>` click that could not
+reach the server in time: the edits made since the last sync are diffed
+into the room (a node a peer deleted meanwhile stays deleted). One guard:
+an encounter emptied while offline does not wipe a room that still has
+content - the room wins then.
+
+**One connection per browser.** Every tab of the site shares one WebSocket:
+the sync hub (room replica, socket, IndexedDB copy, presence keep-alive)
+runs in a `SharedWorker`, and tabs talk to it over MessagePorts. A
+`SharedWorker` only takes a same-origin script URL, so a site that loads
+the toolbar from `ramil-k.github.io` hosts a one-line shim at the URL the
+`sync-worker` attribute names (default `/battle-mat-sync-worker.js`):
+
+```js
+// /battle-mat-sync-worker.js on your site
+importScripts('https://ramil-k.github.io/dice-roller/battle-mat-sync-worker.js');
+```
+
+Without the shim, without `SharedWorker` (Chrome on Android) or when the
+worker does not answer, the hub runs inside the tab and that tab connects on
+its own - everything else works the same. The worker URL is stable across
+deploys, so the hub carries no document logic: the plain-doc <-> Yjs
+bridge stays in the (hashed) page chunks, and the hub only relays, stores
+and reconnects. Tabs of one browser count as one player in the room list
+(they share a profile id).
+
 **Versions.** The engine announces its version to the server (awareness
 `v`); a stale tab running a bundle older than the server's minimum is
 refused - its edits are not applied and it is closed with code 4001, on
-which the client stops reconnecting and the sync screen asks for a reload
-(`label-syncoutdated`). That protects a room from a tab that was left open
-across a deploy.
+which the hub stops reconnecting and the sync screen asks for a reload
+(`label-syncoutdated`). A tab older than another tab behind the same hub is
+turned away the same way, so one socket never mixes bridge versions. That
+protects a room from a tab that was left open across a deploy.
 
 **When the session runs.** A configured room does not connect on every
 page load - the engine bundles yjs (~200 KB) and a page nobody edits on
@@ -344,13 +402,15 @@ ring on the tracker input a peer is currently editing (with their name as the
 tooltip). The sync panel has a name field and a color palette
 (`battle-mat-profile` in `localStorage`); without them the name falls back to
 the site's optional tg-login profile (`dnd-tg-user`, `first_name`/`username`)
-and the color derives from the session. Every player's name is additionally
-prefixed with an instance adjective from the same localizable list that names
-duplicate combatants (chosen by session), so two players with the same name
-still read differently - and a player with no name at all is just the
-adjective. Profile edits apply to the live session immediately. Presence
-rides on Yjs awareness - it is ephemeral, never stored, and disappears when
-the peer disconnects.
+and the color derives from a per-browser seed. Every player's name is
+additionally prefixed with an instance adjective from the same localizable
+list that names duplicate combatants, chosen by the same seed (stored in the
+profile), so two players with the same name still read differently, a
+player with no name at all is just the adjective - and the adjective stays
+the same across reconnects and reloads. Profile edits apply to the live
+session immediately. Presence rides on Yjs awareness - it is ephemeral,
+never stored, and disappears when the peer disconnects (right away when the
+tab closes, within 90 s if it was killed).
 
 The server lives in
 [dice-roller-sync](https://github.com/ramil-k/dice-roller-sync)
@@ -369,9 +429,18 @@ an `x-battleMat` extension property that conforming tools preserve:
 | Token           | `link`      | `{ kind: "token", name, source, tokenKind, link? }`    |
 | Attached image  | `link`      | `{ kind: "image", locked? }` (`url` is a data URI)     |
 | Stroke / shape  | `text`      | `{ kind: "stroke", shape, points, strokeWidth }`       |
+| Terrain         | `text`      | `{ kind: "terrain", material, cells }` or `{ kind: "terrain", material, edges }` |
 
 Stroke points are stored relative to the node's `x`/`y`, and the node's box is
-the drawing's bounding box, so foreign tools still place it correctly. Grid
+the drawing's bounding box, so foreign tools still place it correctly.
+Terrain is one node per material: `cells` is a list of `[col, row]` grid
+cells (fills and the difficult-terrain overlay), `edges` a list of
+`[col, row, "n" | "w"]` cell edges (walls and doors: the top or left side of
+that cell, so every grid line segment has one key). Cells are grid-keyed, so
+terrain follows a change of cell size or offset; the node's box is the
+painted area under the grid it was last painted with. In a sync room a
+material's `cells` array travels as one field (last writer wins when two
+people paint the same material within the same quarter second). Grid
 and viewport settings ride in a top-level `x-battleMat` key:
 
 ```json
@@ -395,8 +464,9 @@ suggests using **Export**.
 
 Beside the encounter document the screen keeps one more `localStorage` key,
 `battle-mat-ui` — the area-visibility toggles (`{ "map": true, "pool": true,
-"tracker": true }`; `pool` only takes effect while `map` is `true` — without
-the map the pool is always hidden). It is a per-device UI preference and is
+"tracker": true, "draw": false, "terrain": false }`; `pool`, `draw` and
+`terrain` only take effect while `map` is `true` — without the map the pool
+and the tool shelves are always hidden). It is a per-device UI preference and is
 not part of the exported `.canvas` file. Whether the screen is currently
 open is a per-tab flag in `sessionStorage` (`battle-mat-screen`).
 
@@ -437,7 +507,11 @@ Set the `--bm-*` custom properties on `battle-mat` (button: `--bm-fab-bg`,
 `--bm-fab-fg`) or globally on `:root` for the screen palette: `--bm-bg`,
 `--bm-surface`, `--bm-fg`, `--bm-muted`, `--bm-accent`, `--bm-edge`,
 `--bm-grid-line`, `--bm-token-player`, `--bm-token-monster`. The embedded
-tracker area derives its `--bm-trk-*` tokens from that palette.
+tracker area derives its `--bm-trk-*` tokens from that palette. Terrain
+materials take their base color from `--bm-mat-<id>` (`wall`, `door`,
+`floor`, `grass`, `tree`, `water`, `dirt`, `sand`, `road`, `rock`, `swamp`,
+`ice`, `lava`, `pit`); the pattern details are derived from it with
+`color-mix()`.
 
 ## `<add-to-battle>` — add a combatant
 
@@ -721,9 +795,9 @@ roll(poolToParsed([20, 6, 6], 2)); // build a roll from a pool of die sizes
 - `src/initiative-tracker.js` — the `<initiative-tracker>` widget (library entry, eager half).
 - `src/add-to-battle.js` — the `<add-to-battle>` pool button (library entry, eager half).
 - `src/battle-mat/` — the lazily-loaded battle screen + tracker implementation:
-  `overlay.js` (the screen: grid layout, toolbar, map shell), `view.js` (SVG
-  scene), `tools.js` (pointer state
-  machine), `tracker.js` (initiative panel), `sync.js` (the Yjs bridge, room
+  `overlay.js` (the screen: grid layout, toolbar, tool shelves, map shell),
+  `view.js` (SVG scene), `terrain-art.js` (material patterns and terrain
+  path geometry), `tools.js` (pointer state machine), `tracker.js` (initiative panel), `sync-hub.js` (the per-browser hub: room replica, socket, IndexedDB, presence keep-alive; also the `SharedWorker` body via `sync-worker.js`), `sync-port.js` (the tab's MessagePort provider), `sync.js` (the Yjs bridge, room
   session, invite links and the presence profile — its own lazy chunk with
   `yjs`/`y-websocket`), `presence.js` (the presence events the map, the
   tracker and the sync module exchange), `adjectives.js` (the instance
@@ -732,7 +806,7 @@ roll(poolToParsed([20, 6, 6], 2)); // build a roll from a pool of die sizes
   `canvas-doc.js`, `grid.js`, `viewport.js`, `combat.js` (turn order plus
   `addCombatant`), `registry.js`, `store.js` (the shared per-key encounter store).
 - `index.html` — live demo with several formulas and a roll-event log.
-- `test/` — Vitest suites: dice logic, geometry, regularity, the pure battle-mat modules and the sync bridge (plain doc ↔ Y.Doc round-trip, concurrent merges, invite-link parsing).
+- `test/` — Vitest suites: dice logic, geometry, regularity, the pure battle-mat modules, the sync bridge (plain doc ↔ Y.Doc round-trip, concurrent merges, resume merge, invite-link parsing) and the sync hub (tabs over MessageChannel, a fake socket for offline / reconnect / version rejection).
 
 ## Browser support
 

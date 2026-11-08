@@ -1,7 +1,7 @@
 // Scene rendering for the battle mat. The svg holds one `world` group that
 // carries the whole viewport transform; inside it, layers stack in paint
-// order: grid, attached images, drawings, tokens, labels, selection, live
-// preview, ruler.
+// order: grid, attached images, terrain (painted cells and walls), drawings,
+// tokens, labels, selection, live preview, ruler.
 //
 // Every document node renders as `<g data-id="..." transform="translate(x y)">`
 // with its content drawn at the local origin, so dragging a node only touches
@@ -9,8 +9,18 @@
 // commits (add/remove/import), which is cheap at battle-map scale anyway.
 
 import { svgEl } from './dom.js';
-import { EXT, getExt, nodeKind, resolveColor, isLocked } from './canvas-doc.js';
+import { EXT, getExt, nodeKind, resolveColor, isLocked, materialLayer } from './canvas-doc.js';
 import { HANDLES } from './resize.js';
+import {
+  PATTERNED,
+  patternId,
+  buildMaterialPattern,
+  updateMaterialPatterns,
+  cellsPathD,
+  edgesPathD,
+  edgeStyle,
+  DOOR_INSET,
+} from './terrain-art.js';
 
 // The "infinite" grid: a pattern-filled rect this large covers any plausible
 // pan range without the cost of real geometry.
@@ -27,6 +37,8 @@ export function buildScene(svg) {
   const patternPath = svgEl('path', { class: 'grid-line', fill: 'none' });
   pattern.appendChild(patternPath);
   defs.appendChild(pattern);
+  const materialPatterns = PATTERNED.map(buildMaterialPattern);
+  defs.append(...materialPatterns);
 
   const world = svgEl('g', { class: 'world' });
   const gridRect = svgEl('rect', {
@@ -38,6 +50,15 @@ export function buildScene(svg) {
     fill: 'url(#bm-grid)',
   });
   const images = svgEl('g', { class: 'layer-images' });
+  // painted terrain above a map image, below the ink; fills, then overlays
+  // (difficult-terrain hatching over any fill), then walls and doors. The
+  // layer takes no pointer events: terrain is painted and erased by its own
+  // tools and never selected or dragged.
+  const terrain = svgEl('g', { class: 'layer-terrain' });
+  const terrainFill = svgEl('g', { class: 'terrain-fill' });
+  const terrainOverlay = svgEl('g', { class: 'terrain-overlay' });
+  const terrainEdge = svgEl('g', { class: 'terrain-edge' });
+  terrain.append(terrainFill, terrainOverlay, terrainEdge);
   const drawings = svgEl('g', { class: 'layer-drawings' });
   const tokens = svgEl('g', { class: 'layer-tokens' });
   // name plates live above every token so a neighboring token's image never
@@ -50,10 +71,14 @@ export function buildScene(svg) {
   const ruler = svgEl('g', { class: 'layer-ruler' });
   ruler.setAttribute('display', 'none');
 
-  world.append(gridRect, images, drawings, tokens, labels, selection, preview, ruler);
+  world.append(gridRect, images, terrain, drawings, tokens, labels, selection, preview, ruler);
   svg.append(defs, world);
 
-  return { svg, world, pattern, patternPath, gridRect, images, drawings, tokens, labels, selection, preview, ruler };
+  return {
+    svg, world, pattern, patternPath, materialPatterns, gridRect, images,
+    terrain, terrainFill, terrainOverlay, terrainEdge,
+    drawings, tokens, labels, selection, preview, ruler,
+  };
 }
 
 export function applyViewport(refs, vp) {
@@ -70,6 +95,7 @@ export function updateGrid(refs, grid) {
   // one cell's top and left edge; tiling draws the full lattice
   refs.patternPath.setAttribute('d', `M ${s} 0 L 0 0 0 ${s}`);
   refs.gridRect.setAttribute('display', grid.visible ? 'inline' : 'none');
+  updateMaterialPatterns(refs.materialPatterns, grid);
 }
 
 // Name plate under the token: shown while Shift is held, pinned via the tools
@@ -184,6 +210,73 @@ export function pathFrom(points) {
   return `M ${points.map(([x, y]) => `${x} ${y}`).join(' L ')}`;
 }
 
+// A terrain node's whole content as one <path> in absolute world
+// coordinates (cells are grid-keyed, so no node transform is involved).
+// Fills get a hairline in the grid color so the lattice stays readable over
+// the paint while the grid is visible.
+function terrainPath(node, grid) {
+  const ext = node[EXT];
+  const layer = materialLayer(ext.material);
+  if (layer === 'edge') {
+    const inset = ext.material === 'door' ? DOOR_INSET : 0;
+    return svgEl('path', { d: edgesPathD(ext.edges ?? [], grid, inset), ...edgeStyle(ext.material, grid.cellSize) });
+  }
+  const attrs = { d: cellsPathD(ext.cells ?? [], grid), fill: `url(#${patternId(ext.material)})` };
+  if (layer === 'fill' && grid.visible) {
+    attrs.class = 'terrain-cells';
+  }
+  return svgEl('path', attrs);
+}
+
+function terrainLayerOf(refs, node) {
+  const layer = materialLayer(node[EXT].material);
+  return layer === 'edge' ? refs.terrainEdge : layer === 'overlay' ? refs.terrainOverlay : refs.terrainFill;
+}
+
+function renderTerrainNode(refs, node, grid) {
+  const g = svgEl('g', { 'data-id': node.id, class: 'terrain' });
+  g.appendChild(terrainPath(node, grid));
+  terrainLayerOf(refs, node).appendChild(g);
+  return g;
+}
+
+// Redraw one terrain node in place during a brush stroke (the full render
+// runs on commit). A node that appeared mid-stroke is added, one that was
+// emptied and removed from the doc is dropped.
+export function updateTerrainEl(refs, doc, id, grid) {
+  const node = doc.nodes.find((n) => n.id === id);
+  const g = refs.terrain.querySelector(`[data-id="${CSS.escape(id)}"]`);
+  if (!node) {
+    g?.remove();
+    return;
+  }
+  if (!g) {
+    renderTerrainNode(refs, node, grid);
+    return;
+  }
+  g.replaceChildren(terrainPath(node, grid));
+}
+
+// Brush footprint under the pointer (cells, or the edge a wall stroke would
+// land on) in the preview layer.
+export function showBrush(refs, { cells, edge }, grid) {
+  let d = '';
+  if (cells) d = cellsPathD(cells, grid);
+  else if (edge) d = edgesPathD([edge], grid);
+  let p = refs.preview.querySelector('.brush-preview');
+  if (!p) {
+    p = svgEl('path', { class: 'brush-preview' });
+    refs.preview.appendChild(p);
+  }
+  p.setAttribute('d', d);
+  p.setAttribute('data-shape', cells ? 'cells' : 'edge');
+  p.style.strokeWidth = edge ? grid.cellSize * 0.16 : '';
+}
+
+export function hideBrush(refs) {
+  refs.preview.querySelector('.brush-preview')?.remove();
+}
+
 // Foreign JSON Canvas nodes (imported from other tools) render as labeled
 // dashed boxes so the user sees them and can pan around them; they are kept
 // in the document untouched.
@@ -203,10 +296,14 @@ function renderForeign(node) {
 
 export function render(refs, doc) {
   refs.images.replaceChildren();
+  refs.terrainFill.replaceChildren();
+  refs.terrainOverlay.replaceChildren();
+  refs.terrainEdge.replaceChildren();
   refs.drawings.replaceChildren();
   refs.tokens.replaceChildren();
   refs.labels.replaceChildren();
-  const activeId = getExt(doc).combat.activeNodeId;
+  const ext = getExt(doc);
+  const activeId = ext.combat.activeNodeId;
 
   for (const node of doc.nodes) {
     const kind = nodeKind(node);
@@ -238,6 +335,8 @@ export function render(refs, doc) {
     } else if (kind === 'stroke') {
       g.append(...renderStroke(node));
       refs.drawings.appendChild(g);
+    } else if (kind === 'terrain') {
+      renderTerrainNode(refs, node, ext.grid);
     } else {
       g.append(...renderForeign(node));
       refs.drawings.appendChild(g);

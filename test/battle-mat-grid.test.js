@@ -8,6 +8,10 @@ import {
   formatMeasure,
   MIN_CELL,
   MAX_CELL,
+  brushCells,
+  nearestEdge,
+  edgeSegment,
+  EDGE_SNAP,
 } from '../src/battle-mat/grid.js';
 
 const grid = (over = {}) => ({ cellSize: 64, offsetX: 0, offsetY: 0, feetPerCell: 5, ...over });
@@ -103,5 +107,65 @@ describe('formatMeasure', () => {
   it('formats cells to one decimal and feet to whole numbers', () => {
     expect(formatMeasure({ cells: 3.246, feet: 16.23 })).toBe('3.2 cells · 16 ft');
     expect(formatMeasure({ cells: 5, feet: 25 })).toBe('5.0 cells · 25 ft');
+  });
+});
+
+describe('brushCells', () => {
+  it('size 1 is the cell under the pointer', () => {
+    expect(brushCells(70, 10, 1, grid())).toEqual([[1, 0]]);
+  });
+
+  it('odd sizes center on the pointer cell', () => {
+    const cells = brushCells(70, 70, 3, grid());
+    expect(cells).toHaveLength(9);
+    expect(cells[0]).toEqual([0, 0]);
+    expect(cells[8]).toEqual([2, 2]);
+  });
+
+  it('even sizes center on the nearest intersection', () => {
+    // pointer near intersection (64, 64): 2x2 covers cells 0..1
+    expect(brushCells(60, 70, 2, grid())).toEqual([[0, 0], [1, 0], [0, 1], [1, 1]]);
+    // pointer near (128, 128)
+    expect(brushCells(130, 120, 2, grid())).toEqual([[1, 1], [2, 1], [1, 2], [2, 2]]);
+  });
+
+  it('honors offsets and negatives', () => {
+    expect(brushCells(-1, -1, 1, grid())).toEqual([[-1, -1]]);
+    expect(brushCells(70, 10, 1, grid({ offsetX: 8, offsetY: 12 }))).toEqual([[0, -1]]);
+  });
+});
+
+describe('nearestEdge', () => {
+  it('picks the closest side and normalizes east/south to the neighbor key', () => {
+    expect(nearestEdge(5, 30, grid())).toMatchObject({ col: 0, row: 0, side: 'w', distance: 5 });
+    expect(nearestEdge(60, 30, grid())).toMatchObject({ col: 1, row: 0, side: 'w', distance: 4 });
+    expect(nearestEdge(30, 3, grid())).toMatchObject({ col: 0, row: 0, side: 'n', distance: 3 });
+    expect(nearestEdge(30, 62, grid())).toMatchObject({ col: 0, row: 1, side: 'n', distance: 2 });
+  });
+
+  it('reports the distance to compare against EDGE_SNAP', () => {
+    const e = nearestEdge(32, 32, grid());
+    expect(e.distance).toBe(32);
+    expect(e.distance > EDGE_SNAP * 64).toBe(true);
+  });
+
+  it('honors offsets', () => {
+    expect(nearestEdge(12, 40, grid({ offsetX: 10 }))).toMatchObject({ col: 0, side: 'w', distance: 2 });
+  });
+
+  it('prefer keeps a stroke on the line it runs along at a corner', () => {
+    // exactly on the corner (64, 64): both orientations are at distance 0
+    expect(nearestEdge(64, 64, grid(), 'n')).toMatchObject({ col: 1, row: 1, side: 'n', distance: 0 });
+    expect(nearestEdge(64, 64, grid(), 'w')).toMatchObject({ col: 1, row: 1, side: 'w', distance: 0 });
+    // a hair past the corner along y = 64: the perpendicular 'w' edge is
+    // closer than the 'n' one would be without the preference
+    expect(nearestEdge(63.9, 64.5, grid(), 'n')).toMatchObject({ col: 0, row: 1, side: 'n' });
+  });
+});
+
+describe('edgeSegment', () => {
+  it('maps edge keys to world segments', () => {
+    expect(edgeSegment([1, 2, 'n'], grid())).toEqual({ x1: 64, y1: 128, x2: 128, y2: 128 });
+    expect(edgeSegment([1, 2, 'w'], grid({ offsetX: 4, offsetY: 6 }))).toEqual({ x1: 68, y1: 134, x2: 68, y2: 198 });
   });
 });

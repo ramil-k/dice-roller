@@ -2,6 +2,48 @@
 
 ## Unreleased
 
+- Sync rooms: **seamless reconnects**. One WebSocket per browser - the sync
+  hub (room replica, socket, IndexedDB copy, presence keep-alive) runs in a
+  `SharedWorker` reached through a same-origin shim (`<battle-toolbar
+  sync-worker>`, default `/battle-mat-sync-worker.js`, new build artifact
+  `dist/battle-mat-sync-worker.js`); tabs talk to it over MessagePorts, and
+  fall back to an in-tab hub where `SharedWorker` is missing. A dropped
+  network, a sleeping laptop, a server restart or a deploy heal on their
+  own (reconnect at once on `online` / tab visible). Offline edits are kept
+  in the replica, survive a reload and merge when the server is back; the
+  panel shows `Reconnecting to <code>` plus `{n} edits pending`
+  (`label-syncoffline`, `label-syncpending`), the dock button turns amber.
+  **The room no longer replaces the local document on resume** - only an
+  explicit Join does; resuming diffs the edits made since the last sync into
+  the room (a peer's deletion stands; an emptied local encounter does not
+  wipe a room). A player's adjective and fallback color now come from a
+  per-browser seed in `battle-mat-profile` and stay the same across
+  reconnects; tabs of one browser count as one player (`pid`). Bridge
+  version 3 (the server's `MIN_CLIENT_VERSION` stays 2).
+
+- Battle map: terrain painting. A new **terrain shelf** (hill button in the
+  tools column, `label-terrain`) paints the ground by grid cells with a 1-3
+  cell brush: stone floor, grass, trees, water, dirt, sand, road, rock,
+  swamp, ice and snow, lava, pit, plus a difficult-terrain hatching overlay
+  that stacks on any fill. Walls and doors are drawn along grid lines; a door
+  on a wall replaces that segment. A terrain eraser (and the right mouse
+  button while painting) clears cells and walls under the brush. Terrain is
+  one JSON Canvas `text` node per material (`x-battleMat.kind: "terrain"`,
+  `cells` or `edges`, grid-keyed so it follows grid changes), renders above
+  attached images and below drawings and tokens, is never selected or
+  dragged, and syncs through rooms like any node. Material colors are
+  `--bm-mat-<id>` custom properties.
+
+- Battle map: the drawing tools moved from the tools column to a **drawing
+  shelf** (brush button, `label-draw`) above the token pool, next to the
+  color swatches and a new line-width choice (thin / medium / thick = 2 / 3
+  / 6 px, `label-strokewidth`). Both shelves are area toggles remembered in
+  `battle-mat-ui` (`draw`, `terrain`, off by default); opening a shelf
+  re-selects its last tool, closing the shelf of the active tool falls back
+  to Select. New `label-*` keys: `draw`, `terrain`, `terrainbrush`, `terrainerase`, `brush`,
+  `strokewidth`, `sizethin`, `sizemedium`, `sizethick` and one `mat<Name>`
+  per material.
+
 - The dice overlay (roll result and builder) is now a modal `<dialog>`
   opened with `showModal()` instead of a body-level `popover="manual"`. A
   `<roll-dice>` chip inside a page's own modal dialog (e.g. a potion builder)
