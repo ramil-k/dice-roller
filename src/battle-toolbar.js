@@ -32,8 +32,8 @@
 //                server; without it (or without SharedWorker) each tab
 //                connects on its own
 //   label-*      localized UI strings for the dock, the battle screen toolbar
-//                and the tracker area: label-map, label-pool, label-dice
-//                plus the tracker's label-title, label-round, label-next,
+//                and the tracker area: label-map, label-pool, label-dice,
+//                label-undo, label-redo plus the tracker's label-title, label-round, label-next,
 //                label-fill, label-reset, label-resetconfirm, label-empty,
 //                label-name, label-hp, label-ac, label-init, label-remove,
 //                and the sync panel's label-sync, label-synccreate,
@@ -134,7 +134,7 @@ const DIE_ICON = `
 // label-* attribute suffixes → keys in the labels object handed to the battle
 // screen (attribute names are lowercase; resetConfirm maps from resetconfirm).
 const LABEL_KEYS = [
-  'map', 'pool', 'dice',
+  'map', 'pool', 'dice', 'undo', 'redo',
   'title', 'round', 'next', 'fill', 'reset', 'resetConfirm', 'empty',
   'name', 'hp', 'ac', 'init', 'remove', 'link',
   'sync', 'syncCreate', 'syncJoin', 'syncLeave', 'syncCodePlaceholder',
@@ -241,6 +241,33 @@ export class BattleToolbar extends HTMLElement {
     syncBoot();
     // room links may also arrive without a page load (SPA-style navigation)
     window.addEventListener('hashchange', syncBoot);
+
+    // Combat journal (event-log.js): in a room, this tab's edits and the
+    // page's rolls are posted to the room's append-only log on the sync
+    // server. The chunk is small (no yjs) but still loads only when a room
+    // is configured - at load, or the moment a session reports one.
+    const key = this.getAttribute('storage-key') ?? undefined;
+    const logBoot = () => {
+      import('./battle-mat/event-log.js')
+        .then((m) => m.startEventLog(key, { word: this._labels().syncPlayer }))
+        .catch((err) => console.error('battle-toolbar: failed to start the combat journal', err));
+    };
+    let inRoom = false;
+    try {
+      inRoom = localStorage.getItem('battle-mat-sync') !== null;
+    } catch {
+      /* storage unavailable */
+    }
+    if (inRoom) {
+      logBoot();
+    } else {
+      const onStatus = (e) => {
+        if (!e.detail?.room) return;
+        window.removeEventListener('battle-mat-sync-status', onStatus);
+        logBoot();
+      };
+      window.addEventListener('battle-mat-sync-status', onStatus);
+    }
   }
 
   // Pool roster for the battle screen: property wins over the JSON attribute;
