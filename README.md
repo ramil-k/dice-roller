@@ -130,7 +130,7 @@ import '@ramilkos/roll-dice/battle-toolbar';
 | `roster`      | JSON array of extra pool tokens; the property wins           | `[]`                |
 | `dice`        | die sizes the builder tray offers, e.g. `"6 20"`             | `4 6 8 10 12 20`    |
 | `sync-worker` | same-origin URL of the sync hub worker shim (see [one connection per browser](#one-connection-per-browser)) | `/battle-mat-sync-worker.js` |
-| `label-*`     | localized UI strings for the dock, the battle screen toolbar and the tracker area: `label-map`, `label-pool`, `label-dice` plus the tracker's `label-title`, `label-round`, `label-next`, `label-fill`, `label-reset`, `label-resetconfirm`, `label-empty`, `label-name`, `label-hp`, `label-ac`, `label-init`, `label-remove`, `label-link`, the image card's `label-image`, `label-lock`, `label-unlock`, `label-imageremove`, and the sync panel's `label-sync`, `label-synccreate`, `label-syncjoin`, `label-syncleave`, `label-synccodeplaceholder`, `label-syncoff`, `label-syncconnecting`, `label-syncconnected`, `label-syncunknownroom`, `label-syncfailed`, `label-syncjoinconfirm`, `label-synccopylink`, `label-synccopied`, `label-syncname`, `label-synccolor`, `label-syncplayer` (the word shown for a nameless player), `label-syncoffline`, `label-syncpending` (`{n}` = edits waiting for the server) | English |
+| `label-*`     | localized UI strings for the dock, the battle screen toolbar and the tracker area: `label-map`, `label-pool`, `label-dice`, `label-undo`, `label-redo` plus the tracker's `label-title`, `label-round`, `label-next`, `label-fill`, `label-reset`, `label-resetconfirm`, `label-empty`, `label-name`, `label-hp`, `label-ac`, `label-init`, `label-remove`, `label-link`, the image card's `label-image`, `label-lock`, `label-unlock`, `label-imageremove`, and the sync panel's `label-sync`, `label-synccreate`, `label-syncjoin`, `label-syncleave`, `label-synccodeplaceholder`, `label-syncoff`, `label-syncconnecting`, `label-syncconnected`, `label-syncunknownroom`, `label-syncfailed`, `label-syncjoinconfirm`, `label-synccopylink`, `label-synccopied`, `label-syncname`, `label-synccolor`, `label-syncplayer` (the word shown for a nameless player), `label-syncoffline`, `label-syncpending` (`{n}` = edits waiting for the server) | English |
 
 Unlike the other widgets the dock pins itself flush into the corner
 (`position: fixed; right: 0; bottom: 0`, only the top-left corner rounded);
@@ -285,6 +285,17 @@ token when it is placed and surface in the initiative tracker.
   hidden).
 - **Export / Import** — download the map as a `.canvas` file or load one.
 - **Clear** — remove all content, keeping grid and viewport settings.
+- **Undo / Redo** (the two arrows in the screen toolbar, `label-undo` /
+  `label-redo`; also Ctrl+Z / Cmd+Z and Ctrl+Shift+Z / Cmd+Shift+Z while the
+  focus is not in a text field) — step back through the encounter's edits:
+  token moves, placements and removals, hp and stat edits, strokes, terrain,
+  grid settings, import and clear. Pan and zoom are never part of a step.
+  Outside a room the history is a stack of up to 50 snapshots per store
+  (edits less than half a second apart merge into one step); a document
+  written by another tab resets it. In a sync room undo runs on the CRDT
+  (`Y.UndoManager` over this client's own transactions): only your edits
+  are undone, a peer's concurrent edit to another field survives, and the
+  seed or resume merge of a room is not a step.
 
 Tokens snap to grid cells while snap is enabled. A plain click on a pool
 avatar (or Enter/Space on it) arms click-to-place: the next click on the map
@@ -415,6 +426,20 @@ tab closes, within 90 s if it was killed).
 The server lives in
 [dice-roller-sync](https://github.com/ramil-k/dice-roller-sync)
 (`https://universal.ramilkarimov.me:9443`).
+
+**Combat journal.** A room is a snapshot: the document knows the encounter
+as it is now, not how it got there. So while a room is configured, the
+toolbar also loads `battle-mat/event-log.js`, which posts what happens to
+the room's append-only journal on the server (`POST /rooms/<code>/events`):
+tokens added and removed, HP and initiative changes, renames, turns and
+resets - diffed from the store on every local `commit()`, so each client
+logs only its own edits under its presence name and color - plus every
+`roll` event on the page (`<roll-dice>`, `<roll-any-dice>`, the dock's
+roller; a `label` attribute or `data-label` on the chip names what was
+rolled for). Events are batched a second after the last one and retried
+while the server is unreachable. `GET /rooms/<code>/events?format=text`
+reads the fight back as one line per event, ready to paste into a chat and
+ask for the story; the event format is documented in the server's README.
 
 ### Storage format: JSON Canvas
 
@@ -799,7 +824,8 @@ roll(poolToParsed([20, 6, 6], 2)); // build a roll from a pool of die sizes
   `view.js` (SVG scene), `terrain-art.js` (material patterns and terrain
   path geometry), `tools.js` (pointer state machine), `tracker.js` (initiative panel), `sync-hub.js` (the per-browser hub: room replica, socket, IndexedDB, presence keep-alive; also the `SharedWorker` body via `sync-worker.js`), `sync-port.js` (the tab's MessagePort provider), `sync.js` (the Yjs bridge, room
   session, invite links and the presence profile — its own lazy chunk with
-  `yjs`/`y-websocket`), `presence.js` (the presence events the map, the
+  `yjs`/`y-websocket`), `event-log.js` (the combat journal: store diffs and
+  rolls posted to the room's event log, no yjs), `presence.js` (the presence events the map, the
   tracker and the sync module exchange), `adjectives.js` (the instance
   adjective list shared by `<add-to-battle>`, the mat and presence names),
   and the pure modules

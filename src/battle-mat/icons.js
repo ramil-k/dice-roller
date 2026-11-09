@@ -26,6 +26,9 @@ export const ICONS = {
   // frame corners around a dot - "show everything"
   fit: wrap('<path d="M4 9V5.5A1.5 1.5 0 0 1 5.5 4H9M15 4h3.5A1.5 1.5 0 0 1 20 5.5V9M20 15v3.5a1.5 1.5 0 0 1-1.5 1.5H15M9 20H5.5A1.5 1.5 0 0 1 4 18.5V15"/><circle cx="12" cy="12" r="2"/>'),
   close: wrap('<path d="M6 6l12 12M18 6L6 18"/>'),
+  // curved arrows for undo / redo (the screen toolbar)
+  undo: wrap('<path d="M8.5 7.5H15a4.5 4.5 0 0 1 0 9H9"/><path d="M11.5 4.5l-4 3 4 3"/>'),
+  redo: wrap('<path d="M15.5 7.5H9a4.5 4.5 0 0 0 0 9h6"/><path d="M12.5 4.5l4 3-4 3"/>'),
   // padlock closed / open (the image card's lock toggle)
   lock: wrap('<rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/><circle cx="12" cy="15.5" r="1.2"/>'),
   unlock: wrap('<rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 7.6-1.7"/><circle cx="12" cy="15.5" r="1.2"/>'),

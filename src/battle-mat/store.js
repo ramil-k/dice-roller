@@ -14,6 +14,8 @@
 //                                       clear, another tab wrote the key) —
 //                                       re-read grid/viewport/combat too
 //   { type: 'save-result', ok }       — an autosave write happened
+// Undo/redo stack changes go to the separate `onHistory(fn)` listeners (the
+// toolbar's two buttons), so `subscribe` keeps seeing document events only.
 //
 // All storage access is try/catch'd, same as the roll log in roll-dice.js —
 // localStorage can be unavailable (private browsing) or full
@@ -21,10 +23,16 @@
 // data URIs), and the mat must keep working in-memory either way. `saveDoc`
 // reports failure so the UI can suggest exporting to a file instead.
 //
+// Undo: every store carries a history - `undo()` / `redo()` / `canUndo()` /
+// `canRedo()`. Outside a sync room that is the local snapshot stack below
+// (one entry per commit, fast series merged, the viewport left alone); in a
+// room sync.js installs a Y.UndoManager-backed provider through
+// `setHistory()` so that only this client's edits are undone, never a peer's.
+//
 // Storage is injectable for tests (Node has no localStorage); covered by
 // test/battle-mat-store.test.js.
 
-import { validateCanvas, serialize, emptyDoc, getExt } from './canvas-doc.js';
+import { validateCanvas, serialize, emptyDoc, getExt, EXT } from './canvas-doc.js';
 import { dlog, caller, docSummary, vpOf } from './debug.js';
 
 export const DEFAULT_KEY = 'battle-mat-canvas';
@@ -83,17 +91,147 @@ export function createAutosaver(key, { delay = 500, storage = globalThis.localSt
   };
 }
 
+// ---------------------------------------------------------------------------
+// local undo history (pure; the store wires it to commit/setDoc)
+
+export const HISTORY_LIMIT = 50;
+// commits closer together than this merge into one undo step (a token drag
+// commits once anyway; this folds things like a burst of hp clicks)
+export const HISTORY_CAPTURE = 500;
+
+const deepEqual = (a, b) => {
+  if (a === b) return true;
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const ka = Object.keys(a);
+  const kb = Object.keys(b);
+  if (ka.length !== kb.length) return false;
+  for (const k of ka) {
+    if (!Object.hasOwn(b, k) || !deepEqual(a[k], b[k])) return false;
+  }
+  return true;
+};
+
+// A snapshot of everything but the viewport (pan/zoom is per device and
+// never part of an undo step). Snapshots are immutable once taken, so a node
+// that did not change since `prev` is shared with the previous snapshot
+// instead of cloned - fifty steps of a map with a multi-megabyte image hold
+// that image once, not fifty times.
+export function snapshotDoc(doc, prev = null) {
+  const prevNodes = new Map((prev?.nodes ?? []).map((n) => [n.id, n]));
+  const nodes = (doc.nodes ?? []).map((n) => {
+    const p = prevNodes.get(n.id);
+    return p && deepEqual(p, n) ? p : structuredClone(n);
+  });
+  const { viewport: _viewport, ...ext } = doc[EXT] ?? {};
+  return { nodes, edges: structuredClone(doc.edges ?? []), [EXT]: structuredClone(ext) };
+}
+
+const sameSnapshot = (a, b) =>
+  a.nodes.length === b.nodes.length &&
+  a.nodes.every((n, i) => n === b.nodes[i]) &&
+  deepEqual(a.edges, b.edges) &&
+  deepEqual(a[EXT], b[EXT]);
+
+// A live document from a snapshot: fresh objects (components mutate the live
+// doc in place, the snapshot must stay pristine) plus the given viewport.
+export function restoreSnapshot(snap, viewport) {
+  return {
+    nodes: snap.nodes.map((n) => structuredClone(n)),
+    edges: structuredClone(snap.edges),
+    [EXT]: { ...structuredClone(snap[EXT]), viewport: structuredClone(viewport ?? {}) },
+  };
+}
+
+// The snapshot stack. `base` is the state as of the last record (what the
+// live doc looked like after its last commit); the undo stack holds the
+// states before that, the redo stack the states undone. `record(doc)` is
+// called after every commit: no change -> no step; a change within
+// `captureTimeout` of the previous one extends that step instead of adding
+// one. `undo()` / `redo()` move `base` and return the snapshot to restore
+// (null when there is nothing to do). `reset(doc)` forgets everything - the
+// doc was replaced from outside (another tab, a sync room).
+export function createLocalHistory({ limit = HISTORY_LIMIT, captureTimeout = HISTORY_CAPTURE, now = Date.now } = {}) {
+  let base = null;
+  let undoStack = [];
+  let redoStack = [];
+  let lastRecord = null;
+
+  return {
+    reset(doc) {
+      base = doc ? snapshotDoc(doc) : null;
+      undoStack = [];
+      redoStack = [];
+      lastRecord = null;
+    },
+    record(doc) {
+      if (base === null) {
+        base = snapshotDoc(doc);
+        return false;
+      }
+      const snap = snapshotDoc(doc, base);
+      if (sameSnapshot(snap, base)) return false;
+      const t = now();
+      const merge = lastRecord !== null && t - lastRecord < captureTimeout && undoStack.length > 0;
+      if (!merge) {
+        undoStack.push(base);
+        if (undoStack.length > limit) undoStack.splice(0, undoStack.length - limit);
+      }
+      redoStack = [];
+      base = snap;
+      lastRecord = t;
+      return true;
+    },
+    // the next record starts a new step even if it comes right away
+    stopCapturing() {
+      lastRecord = null;
+    },
+    undo() {
+      if (undoStack.length === 0) return null;
+      redoStack.push(base);
+      base = undoStack.pop();
+      lastRecord = null;
+      return base;
+    },
+    redo() {
+      if (redoStack.length === 0) return null;
+      undoStack.push(base);
+      base = redoStack.pop();
+      lastRecord = null;
+      return base;
+    },
+    canUndo: () => undoStack.length > 0,
+    canRedo: () => redoStack.length > 0,
+    get size() {
+      return undoStack.length;
+    },
+  };
+}
+
 const stores = new Map();
 
 // The shared encounter store, one instance per storage key. Options are
 // honored only by the call that creates the store (tests use unique keys and
 // pass a stub storage).
-export function getStore(key = DEFAULT_KEY, { storage = globalThis.localStorage, delay = 500 } = {}) {
+export function getStore(
+  key = DEFAULT_KEY,
+  { storage = globalThis.localStorage, delay = 500, historyLimit = HISTORY_LIMIT, captureTimeout = HISTORY_CAPTURE } = {},
+) {
   let store = stores.get(key);
   if (store) return store;
 
   let doc = loadDoc(key, storage) ?? emptyDoc();
   const subscribers = new Set();
+  // the local snapshot stack; `external` (a sync room's Y.UndoManager
+  // provider) takes over while installed, see setHistory
+  const local = createLocalHistory({ limit: historyLimit, captureTimeout });
+  local.reset(doc);
+  let external = null;
+  let restoring = false; // an undo/redo is replacing the doc - not a new step
+  const historyListeners = new Set();
+  const notifyHistory = () => {
+    for (const fn of [...historyListeners]) fn();
+  };
   const notify = (event) => {
     for (const fn of [...subscribers]) fn(event);
     // a DOM-level echo of document changes for lightweight listeners (the
@@ -125,7 +263,14 @@ export function getStore(key = DEFAULT_KEY, { storage = globalThis.localStorage,
       });
       doc = next;
       if (persist) autosaver.schedule(doc);
+      if (!external && !restoring) {
+        // an import or a clear is an undo step; a doc written by another
+        // tab (persist: false) is foreign - the old steps no longer apply
+        if (persist) local.record(doc);
+        else local.reset(doc);
+      }
       notify({ type: 'change', full: true });
+      if (!external) notifyHistory();
     },
     commit() {
       dlog('store', 'commit', { ...docSummary(doc), from: caller() });
@@ -135,7 +280,62 @@ export function getStore(key = DEFAULT_KEY, { storage = globalThis.localStorage,
       // the high-frequency viewport `save()` stays debounced.)
       autosaver.schedule(doc);
       autosaver.flush();
+      const step = external ? false : local.record(doc);
       notify({ type: 'change', full: false });
+      if (step) notifyHistory();
+    },
+    // ---- undo / redo ----
+    // Local: restore the snapshot with the current viewport and replace the
+    // doc (a `full` change). In a room the installed provider undoes the
+    // Yjs transaction and the bridge materializes the result.
+    undo() {
+      if (external) return external.undo();
+      const snap = local.undo();
+      if (!snap) return false;
+      restoring = true;
+      try {
+        store.setDoc(restoreSnapshot(snap, getExt(doc).viewport));
+      } finally {
+        restoring = false;
+      }
+      return true;
+    },
+    redo() {
+      if (external) return external.redo();
+      const snap = local.redo();
+      if (!snap) return false;
+      restoring = true;
+      try {
+        store.setDoc(restoreSnapshot(snap, getExt(doc).viewport));
+      } finally {
+        restoring = false;
+      }
+      return true;
+    },
+    canUndo() {
+      return external ? external.canUndo() : local.canUndo();
+    },
+    canRedo() {
+      return external ? external.canRedo() : local.canRedo();
+    },
+    // Install an undo provider ({ undo, redo, canUndo, canRedo, onChange? })
+    // in place of the local stack - sync.js does this for a connected room,
+    // whose edits must be undone through the CRDT. `null` goes back to the
+    // local stack, started afresh from the current doc (the room rewrote it).
+    setHistory(provider) {
+      external?.offChange?.();
+      external = provider ?? null;
+      if (external) {
+        external.offChange = external.onChange?.(notifyHistory) ?? null;
+      } else {
+        local.reset(doc);
+      }
+      notifyHistory();
+    },
+    // Hear about undo/redo stack changes (canUndo/canRedo may have flipped).
+    onHistory(fn) {
+      historyListeners.add(fn);
+      return () => historyListeners.delete(fn);
     },
     save() {
       dlog('store', `save (viewport-only) ${vpOf(doc)}`, { from: caller(2) });

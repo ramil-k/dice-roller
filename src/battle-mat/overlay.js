@@ -6,7 +6,8 @@
 // dock): the map tools group at its top and, bottom-aligned, dock-style
 // buttons that toggle the map, the token pool and the initiative tracker
 // areas (state persisted in the battle-mat-ui localStorage key; the pool
-// only shows while the map is on), plus a dice
+// only shows while the map is on), undo / redo for the encounter (also
+// Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z outside text fields), plus a dice
 // button that opens the roll-dice builder overlay on top of everything.
 // Escape closes the screen (no close button).
 // Mirrors the DiceOverlay architecture in roll-dice.js — a detached host
@@ -64,6 +65,11 @@ import { attachTools } from './tools.js';
 import { buildTracker, LINK_ICON } from './tracker.js';
 
 const MAX_IMAGE_DIM = 2048; // attached images are downscaled to fit (quota)
+
+// Whether a keystroke aimed at `target` is text editing (so the screen's own
+// shortcuts leave it alone).
+const isTextField = (target) =>
+  target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.tagName === 'SELECT' || target?.isContentEditable === true;
 const SYNC_ROOMS_POLL = 20000; // ms between room-list refreshes while the sync screen is open
 
 // Which screen areas are visible — a per-device UI preference, so it lives in
@@ -114,6 +120,8 @@ const SCREEN_LABELS = {
   pool: 'Token pool',
   title: 'Initiative',
   dice: 'Roll dice',
+  undo: 'Undo',
+  redo: 'Redo',
   sync: 'Sync',
   syncCreate: 'Create a room from this encounter',
   syncJoin: 'Join',
@@ -308,7 +316,7 @@ ${Object.entries(MATERIAL_COLORS).map(([id, c]) => `    --bm-mat-${id}: ${c};`).
     display: grid;
     /* the 1fr tools row soaks up the free height, pushing the dock-style
        buttons to the bottom of the column, like the page dock */
-    grid-template-rows: 1fr repeat(4, min-content);
+    grid-template-rows: 1fr repeat(6, min-content);
     justify-items: center;
     padding: 0;
     background: var(--bm-surface);
@@ -322,10 +330,12 @@ ${Object.entries(MATERIAL_COLORS).map(([id, c]) => `    --bm-mat-${id}: ${c};`).
   }
   /* explicit row per child — the layout does not depend on source order */
   .screen-toolbar > .tools { grid-row: 1; }
-  .screen-toolbar > .b-sync { grid-row: 2; }
-  .screen-toolbar > .b-tracker { grid-row: 3; }
-  .screen-toolbar > .b-map { grid-row: 4; }
-  .screen-toolbar > .b-dice { grid-row: 5; }
+  .screen-toolbar > .b-undo { grid-row: 2; }
+  .screen-toolbar > .b-redo { grid-row: 3; }
+  .screen-toolbar > .b-sync { grid-row: 4; }
+  .screen-toolbar > .b-tracker { grid-row: 5; }
+  .screen-toolbar > .b-map { grid-row: 6; }
+  .screen-toolbar > .b-dice { grid-row: 7; }
   .screen-toolbar > button {
     display: inline-flex;
     align-items: center;
@@ -342,6 +352,7 @@ ${Object.entries(MATERIAL_COLORS).map(([id, c]) => `    --bm-mat-${id}: ${c};`).
     transition: background 0.15s ease, color 0.15s ease;
   }
   .screen-toolbar > button:hover { background: rgb(from var(--bm-fg) r g b / 0.08); }
+  .screen-toolbar > button:disabled { opacity: 0.35; cursor: default; background: transparent; }
   .screen-toolbar > .b-tracker { --tb-accent: #f4c430; }
   .screen-toolbar > .b-map { --tb-accent: #5fb98d; }
   .screen-toolbar > .b-sync { --tb-accent: #58b7d8; }
@@ -885,6 +896,8 @@ class BattleMatOverlay {
     this.store = getStore(storageKey);
     this._unsubscribe?.();
     this._unsubscribe = this.store.subscribe((e) => this._onStoreEvent(e));
+    this._unsubscribeHistory?.();
+    this._unsubscribeHistory = this.store.onHistory(() => this._refreshHistory());
     this.tool = 'select';
     this.color = '1';
     this.strokeWidth = 3;
@@ -918,6 +931,8 @@ class BattleMatOverlay {
     this._tracker = null;
     this._unsubscribe?.();
     this._unsubscribe = null;
+    this._unsubscribeHistory?.();
+    this._unsubscribeHistory = null;
     this.store?.flush();
     document.removeEventListener('keydown', this._onKeydown, true);
     if (this._onSyncStatus) window.removeEventListener('battle-mat-sync-status', this._onSyncStatus);
@@ -1323,6 +1338,21 @@ class BattleMatOverlay {
     this._screenButtons = new Map();
     bar.append(this._buildToolbar());
 
+    // Undo / redo: the store's history (local snapshots, or the room's
+    // Y.UndoManager while synced); enabled state follows the stacks.
+    this._historyButtons = {};
+    for (const [action, label] of [['undo', L.undo], ['redo', L.redo]]) {
+      const btn = el('button', `b-${action}`);
+      btn.type = 'button';
+      btn.setAttribute('aria-label', label);
+      btn.title = label;
+      btn.innerHTML = ICONS[action];
+      btn.addEventListener('click', () => this._history(action));
+      this._historyButtons[action] = btn;
+      bar.appendChild(btn);
+    }
+    this._refreshHistory();
+
     // Sync: not an area toggle — opens the room panel; the accent lights up
     // while a room is connected.
     const sync = el('button', 'b-sync');
@@ -1358,6 +1388,22 @@ class BattleMatOverlay {
     dice.addEventListener('click', () => this._openDice(dice));
     bar.appendChild(dice);
     return bar;
+  }
+
+  // Undo or redo through the store. A drag, stroke or placement in flight is
+  // cancelled first: its uncommitted mutations would otherwise land in the
+  // restored document.
+  _history(action) {
+    this.tools?.cancelActive();
+    if (action === 'undo') this.store.undo();
+    else this.store.redo();
+    this._refreshHistory();
+  }
+
+  _refreshHistory() {
+    if (!this._historyButtons || !this.store) return;
+    this._historyButtons.undo.disabled = !this.store.canUndo();
+    this._historyButtons.redo.disabled = !this.store.canRedo();
   }
 
   _toggleArea(area) {
@@ -2337,6 +2383,7 @@ class BattleMatOverlay {
       this._rebuildPool();
       this._refreshCard();
     }
+    if (e.type === 'change') this._refreshHistory();
   }
 
   _setStatus(text) {
@@ -2514,6 +2561,13 @@ class BattleMatOverlay {
       e.stopPropagation();
     } else if (e.key === 'Tab') {
       this._trapFocus(e);
+    } else if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'z' || e.key === 'Z')) {
+      // Ctrl/Cmd+Z undoes, with Shift redoes - unless the keystroke belongs
+      // to a text field (its own undo)
+      if (isTextField(e.composedPath()[0])) return;
+      this._history(e.shiftKey ? 'redo' : 'undo');
+      e.preventDefault();
+      e.stopPropagation();
     } else if (e.key === 'Delete' || e.key === 'Backspace') {
       const tag = e.composedPath()[0]?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;

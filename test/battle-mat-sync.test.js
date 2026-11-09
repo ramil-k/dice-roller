@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 import { EXT, emptyDoc, makeImage, makeToken, paintCells, paintEdges, terrainNode } from '../src/battle-mat/canvas-doc.js';
 import {
+  createYHistory,
   dataImageNodes,
   displayName,
   hasContent,
@@ -357,5 +358,121 @@ describe('player display name', () => {
     const merged = materializeDoc(y1, {});
     expect(terrainNode(merged, 'water')[EXT].cells).toEqual([[5, 5]]);
     expect(terrainNode(merged, 'grass')[EXT].cells).toEqual([[0, 0], [1, 0], [2, 0]]);
+  });
+});
+
+describe('undo in a room (Y.UndoManager over local transactions)', () => {
+  const tokA = (y) => materializeDoc(y, {}).nodes.find((n) => n.id === 'tok-a');
+  const tokB = (y) => materializeDoc(y, {}).nodes.find((n) => n.id === 'tok-b');
+
+  // two replicas of a seeded room; the history is created after the seed,
+  // as the session does, so seeding is not a step
+  const room = () => {
+    const y1 = new Y.Doc();
+    const y2 = new Y.Doc();
+    pushDoc(y1, sampleDoc(), null);
+    replicate(y1, y2);
+    const history = createYHistory(y1, { captureTimeout: 0 });
+    return { y1, y2, history };
+  };
+
+  it('reverts only this client\'s edit, keeping a peer\'s concurrent edit to the same document', () => {
+    const { y1, y2, history } = room();
+    expect(history.canUndo()).toBe(false);
+
+    const doc1 = materializeDoc(y1, {});
+    const moved = structuredClone(doc1);
+    moved.nodes.find((n) => n.id === 'tok-a').x = 640;
+    pushDoc(y1, moved, doc1);
+    expect(history.canUndo()).toBe(true);
+
+    const doc2 = materializeDoc(y2, {});
+    const hurt = structuredClone(doc2);
+    hurt.nodes.find((n) => n.id === 'tok-b')[EXT].hp = 1;
+    pushDoc(y2, hurt, doc2);
+
+    syncBoth(y1, y2);
+    expect(tokA(y1).x).toBe(640);
+    expect(tokB(y1)[EXT].hp).toBe(1);
+
+    expect(history.undo()).toBe(true);
+    syncBoth(y1, y2);
+    for (const y of [y1, y2]) {
+      expect(tokA(y).x).toBe(64); // our move undone everywhere
+      expect(tokB(y)[EXT].hp).toBe(1); // the peer's edit untouched
+    }
+    expect(history.canUndo()).toBe(false);
+    expect(history.canRedo()).toBe(true);
+    history.redo();
+    syncBoth(y1, y2);
+    expect(tokA(y2).x).toBe(640);
+  });
+
+  it('a peer\'s edits are not undoable from here', () => {
+    const { y1, y2, history } = room();
+    const doc2 = materializeDoc(y2, {});
+    const hurt = structuredClone(doc2);
+    hurt.nodes.find((n) => n.id === 'tok-b')[EXT].hp = 1;
+    pushDoc(y2, hurt, doc2);
+    syncBoth(y1, y2);
+    expect(tokB(y1)[EXT].hp).toBe(1);
+    expect(history.canUndo()).toBe(false);
+    expect(history.undo()).toBe(false);
+    expect(tokB(y1)[EXT].hp).toBe(1);
+  });
+
+  it('undoes a local node addition while a peer\'s concurrent addition stays', () => {
+    const { y1, y2, history } = room();
+    const doc1 = materializeDoc(y1, {});
+    const withMine = structuredClone(doc1);
+    const mine = makeToken({ x: 0, y: 256, url: 'm.png', name: 'Mine' });
+    mine.id = 'tok-mine';
+    withMine.nodes.push(mine);
+    pushDoc(y1, withMine, doc1);
+
+    const doc2 = materializeDoc(y2, {});
+    const withTheirs = structuredClone(doc2);
+    const theirs = makeToken({ x: 256, y: 256, url: 't.png', name: 'Theirs' });
+    theirs.id = 'tok-theirs';
+    withTheirs.nodes.push(theirs);
+    pushDoc(y2, withTheirs, doc2);
+
+    syncBoth(y1, y2);
+    expect(materializeDoc(y1, {}).nodes.map((n) => n.id)).toContain('tok-mine');
+
+    history.undo();
+    syncBoth(y1, y2);
+    for (const y of [y1, y2]) {
+      const ids = materializeDoc(y, {}).nodes.map((n) => n.id);
+      expect(ids).not.toContain('tok-mine');
+      expect(ids).toContain('tok-theirs');
+    }
+  });
+
+  it('reports stack changes and runs the pre-undo hook', () => {
+    const { y1, history } = room();
+    const changes = [];
+    const off = history.onChange(() => changes.push(history.canUndo()));
+    const doc1 = materializeDoc(y1, {});
+    const edited = structuredClone(doc1);
+    edited[EXT].combat.round = 9;
+    pushDoc(y1, edited, doc1);
+    expect(changes).toEqual([true]);
+    history.undo(); // popped from undo, pushed onto redo - one or two events
+    expect(changes.length).toBeGreaterThanOrEqual(2);
+    expect(changes.at(-1)).toBe(false);
+    expect(materializeDoc(y1, {})[EXT].combat.round).toBe(3);
+    off();
+    const seen = changes.length;
+    history.redo();
+    expect(changes).toHaveLength(seen);
+
+    let flushed = 0;
+    const hooked = createYHistory(y1, { beforeUndo: () => flushed++ });
+    hooked.undo();
+    hooked.redo();
+    expect(flushed).toBe(2);
+    hooked.destroy();
+    history.destroy();
   });
 });

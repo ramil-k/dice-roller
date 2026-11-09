@@ -35,6 +35,14 @@
 // room's image store on the sync server and swaps the url for the
 // short, immutable URL it returns; Yjs then garbage-collects the old value.
 //
+// Undo in a room: a Y.UndoManager over the two maps tracks only this
+// client's transactions (LOCAL_ORIGIN), so undo reverts the last local push
+// and never a peer's edit; the materialize that follows every Y.Doc update
+// brings the plain doc along. The manager is created after the first sync,
+// so seeding or resume-merging a room is not an undoable step. It replaces
+// the store's local snapshot stack for the life of the session (store.js
+// setHistory).
+//
 // Invite links: any page that mounts <battle-toolbar> joins a room when its
 // URL carries "#bm-room=<code>" (the hash never reaches the static host and
 // works on forks/mirrors of the site). The sync panel offers a copy-link
@@ -322,6 +330,49 @@ export function materializeDoc(ydoc, { viewport } = {}) {
 export const hasContent = (ydoc) =>
   ydoc.getMap('nodes').size > 0 || ydoc.getMap('meta').size > 0;
 
+// The store's undo provider for a replicated document (see store.js
+// setHistory): a Y.UndoManager scoped to 'nodes' and 'meta' that captures
+// only transactions with `origin` - pushDoc's LOCAL_ORIGIN - so a peer's
+// edits are never undone from here, and a peer's concurrent edit to another
+// field survives our undo. `onChange(fn)` fires whenever the stacks change
+// and returns the unsubscribe.
+export function createYHistory(ydoc, { origin = LOCAL_ORIGIN, captureTimeout = 500, beforeUndo } = {}) {
+  const manager = new Y.UndoManager([ydoc.getMap('nodes'), ydoc.getMap('meta')], {
+    trackedOrigins: new Set([origin]),
+    captureTimeout,
+  });
+  const listeners = new Set();
+  const fire = () => {
+    for (const fn of [...listeners]) fn();
+  };
+  for (const ev of ['stack-item-added', 'stack-item-popped', 'stack-cleared']) manager.on(ev, fire);
+  return {
+    manager,
+    undo() {
+      beforeUndo?.();
+      if (!manager.canUndo()) return false;
+      manager.undo();
+      return true;
+    },
+    redo() {
+      beforeUndo?.();
+      if (!manager.canRedo()) return false;
+      manager.redo();
+      return true;
+    },
+    canUndo: () => manager.canUndo(),
+    canRedo: () => manager.canRedo(),
+    onChange(fn) {
+      listeners.add(fn);
+      return () => listeners.delete(fn);
+    },
+    destroy() {
+      listeners.clear();
+      manager.destroy();
+    },
+  };
+}
+
 // ---------------------------------------------------------------------------
 // images by link (pure parts covered by tests)
 
@@ -435,6 +486,7 @@ export function startSync(storageKey = DEFAULT_KEY, { server = DEFAULT_SERVER, r
     snapshot: null,
     pushTimer: null,
     externalizing: null,
+    history: null,
   };
   // resolves once the first sync finished (or the session was stopped before
   // that) - ensureSync() waits on it
@@ -525,7 +577,7 @@ export function startSync(storageKey = DEFAULT_KEY, { server = DEFAULT_SERVER, r
   });
 
   ydoc.on('update', (update, origin) => {
-    const originName = origin === LOCAL_ORIGIN ? 'local' : origin === null ? 'null' : origin === provider ? 'provider(remote)' : typeof origin;
+    const originName = origin === LOCAL_ORIGIN ? 'local' : origin === null ? 'null' : origin === provider ? 'provider(remote)' : origin instanceof Y.UndoManager ? 'undo' : typeof origin;
     dlog('sync', `ydoc update origin=${originName} bytes=${update.byteLength} ready=${session.ready}` +
       `${!session.ready || origin === LOCAL_ORIGIN || origin === null ? ' -> ignored' : ' -> push pending local edits, then applyRemote'}`);
     if (!session.ready || origin === LOCAL_ORIGIN || origin === null) return;
@@ -566,6 +618,10 @@ export function startSync(storageKey = DEFAULT_KEY, { server = DEFAULT_SERVER, r
       applyRemote();
     }
     session.ready = true;
+    // from here on local pushes are undo steps; an edit still waiting on the
+    // push debounce is flushed first so undo reverts what the user sees
+    session.history = createYHistory(ydoc, { beforeUndo: pushNow });
+    store.setHistory(session.history);
     session.status = provider.status === 'connected' ? 'connected' : provider.status === 'offline' ? 'offline' : 'connecting';
     emitStatus(storageKey, session);
     session.markReady(true);
@@ -629,7 +685,12 @@ export function stopSync(storageKey = DEFAULT_KEY, { forget = true } = {}) {
     if (session.onPresence) window.removeEventListener(PRESENCE_EVENT, session.onPresence);
     session.unsubscribe?.();
     session.markReady?.(false);
-    getStore(storageKey).synced = false;
+    const store = getStore(storageKey);
+    store.synced = false;
+    if (session.history) {
+      store.setHistory(null);
+      session.history.destroy();
+    }
     session.provider.destroy(); // tells the hub goodbye - peers drop our cursor
     session.ydoc.destroy();
     sessions.delete(storageKey);
