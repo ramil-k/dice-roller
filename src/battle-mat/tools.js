@@ -24,7 +24,7 @@ import { screenToWorld, panBy, zoomAt, pinchUpdate } from './viewport.js';
 import { snapTokenOrigin, measure, formatMeasure, brushCells, nearestEdge, EDGE_SNAP } from './grid.js';
 import {
   EXT, getNode, moveNode, removeNode, resizeNode, makeStroke, addNode, nodeKind, isLocked,
-  materialLayer, paintCells, eraseCells, paintEdges, eraseEdges, edgesInCells,
+  materialLayer, paintCells, eraseCells, paintEdges, eraseEdges, edgesInCells, resolveColor,
 } from './canvas-doc.js';
 import { resizeBox, isCorner } from './resize.js';
 import {
@@ -70,7 +70,9 @@ export function attachTools(ctx) {
 
   const previewAttrs = () => ({
     fill: 'none',
-    stroke: ctx.getColor(),
+    // the drawing color is a JSON Canvas preset id ('1'-'6') or a hex value:
+    // resolve it like renderStroke does, a bare '1' is no CSS color
+    stroke: resolveColor(ctx.getColor()),
     'stroke-width': ctx.getStrokeWidth?.() ?? 3,
     'stroke-linecap': 'round',
     'stroke-linejoin': 'round',
